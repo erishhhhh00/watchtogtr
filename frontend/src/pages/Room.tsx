@@ -20,13 +20,22 @@ function Room() {
   const socketConnected = useRef(false);
 
   useEffect(() => {
-    if (!user || !roomId) return;
+    if (!user || !roomId) {
+      console.error('Missing user or roomId:', { user, roomId });
+      setError('User not authenticated or room ID missing');
+      setLoading(false);
+      return;
+    }
 
     const init = async () => {
       try {
+        console.log('Fetching room:', roomId);
         // Fetch room details
         const { room: roomData } = await roomService.getRoom(roomId);
+        console.log('Room data received:', roomData);
+        
         await roomService.joinRoom(roomId, user.id);
+        console.log('Joined room successfully');
         
         setRoom(roomData);
         setIsHost(roomData.hostId === user.id);
@@ -72,6 +81,8 @@ function Room() {
 
         setLoading(false);
       } catch (err: any) {
+        console.error('Room init error:', err);
+        console.error('Error response:', err.response?.data);
         setError(err.response?.data?.message || 'Failed to join room');
         setLoading(false);
       }
