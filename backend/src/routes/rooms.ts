@@ -58,22 +58,7 @@ roomRouter.post('/', roomCreationLimiter, async (req, res, next) => {
   }
 });
 
-roomRouter.get('/:roomId', async (req, res, next) => {
-  try {
-    const { roomId } = req.params;
-
-    const room = rooms.get(roomId);
-    if (!room) {
-      throw new AppError('Room not found', 404);
-    }
-
-    res.json({ room });
-  } catch (err) {
-    next(err);
-  }
-});
-
-// Join room by code
+// Join room by code - MUST BE BEFORE /:roomId route
 roomRouter.get('/code/:code', async (req, res, next) => {
   try {
     const { code } = req.params;
@@ -92,6 +77,21 @@ roomRouter.get('/code/:code', async (req, res, next) => {
     }
 
     res.json({ room: foundRoom });
+  } catch (err) {
+    next(err);
+  }
+});
+
+roomRouter.get('/:roomId', async (req, res, next) => {
+  try {
+    const { roomId } = req.params;
+
+    const room = rooms.get(roomId);
+    if (!room) {
+      throw new AppError('Room not found', 404);
+    }
+
+    res.json({ room });
   } catch (err) {
     next(err);
   }

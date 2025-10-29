@@ -25,11 +25,12 @@ function ChatPanel() {
     // Listen for chat messages - setup only once
     if (!hasSetupListeners.current) {
       socketService.onChatMessage((message) => {
+        console.log('Received chat message:', message);
         addMessage(message);
       });
       hasSetupListeners.current = true;
     }
-  }, []);
+  }, [addMessage]);
 
   useEffect(() => {
     // Auto-scroll to bottom
@@ -40,6 +41,7 @@ function ChatPanel() {
     e.preventDefault();
     if (!inputMessage.trim() || !room) return;
 
+    console.log('Sending message:', inputMessage);
     socketService.sendMessage(room.id, inputMessage);
     setInputMessage('');
   };
