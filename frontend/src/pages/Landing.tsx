@@ -53,7 +53,9 @@ function Landing() {
     setLoading(true);
     setError('');
     try {
+      console.log('Attempting guest join with username:', username);
       const data = await authService.joinAsGuest(username);
+      console.log('Guest join successful:', data);
       setUser(data.user);
       setToken(data.token);
       if (joinRoomId) {
@@ -62,7 +64,10 @@ function Landing() {
         setMode('home');
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to join as guest');
+      console.error('Guest join error:', err);
+      console.error('Error response:', err.response);
+      const errorMsg = err.response?.data?.message || err.message || 'Failed to join as guest';
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }
