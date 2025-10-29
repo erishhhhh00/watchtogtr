@@ -19,12 +19,16 @@ function ChatPanel() {
     localStream: null,
   });
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const hasSetupListeners = useRef(false);
 
   useEffect(() => {
-    // Listen for chat messages
-    socketService.onChatMessage((message) => {
-      addMessage(message);
-    });
+    // Listen for chat messages - setup only once
+    if (!hasSetupListeners.current) {
+      socketService.onChatMessage((message) => {
+        addMessage(message);
+      });
+      hasSetupListeners.current = true;
+    }
   }, []);
 
   useEffect(() => {

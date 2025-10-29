@@ -173,10 +173,12 @@ function Landing() {
               <input
                 type="text"
                 value={joinRoomId}
-                onChange={(e) => setJoinRoomId(e.target.value)}
-                placeholder="Enter room ID"
-                className="w-full px-4 py-3 bg-dark border border-gray-700 rounded-lg focus:outline-none focus:border-primary text-white"
+                onChange={(e) => setJoinRoomId(e.target.value.toUpperCase())}
+                placeholder="Enter 5-digit room code"
+                maxLength={5}
+                className="w-full px-4 py-3 bg-dark border border-gray-700 rounded-lg focus:outline-none focus:border-primary text-white text-center text-2xl font-mono tracking-widest"
               />
+              <p className="text-xs text-gray-400 mt-1">Example: 12345</p>
             </div>
             <button
               onClick={handleJoinRoom}
