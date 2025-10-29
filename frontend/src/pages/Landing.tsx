@@ -93,8 +93,9 @@ function Landing() {
       setMode('guest');
       return;
     }
-    
-    if (!joinRoomId) {
+
+    const raw = (joinRoomId || '').trim();
+    if (!raw) {
       setError('Please enter room code or ID');
       return;
     }
@@ -102,11 +103,11 @@ function Landing() {
     setLoading(true);
     setError('');
     try {
-      let roomId = joinRoomId;
+      let roomId = raw;
       
       // If 5-digit code, get room by code
-      if (/^\d{5}$/.test(joinRoomId)) {
-        const { room } = await roomService.getRoomByCode(joinRoomId);
+      if (/^\d{5}$/.test(raw)) {
+        const { room } = await roomService.getRoomByCode(raw);
         roomId = room.id;
       }
       
@@ -172,8 +173,13 @@ function Landing() {
               <label className="block text-sm font-medium mb-2">Join Existing Room</label>
               <input
                 type="text"
+                inputMode="numeric"
                 value={joinRoomId}
-                onChange={(e) => setJoinRoomId(e.target.value.toUpperCase())}
+                onChange={(e) => {
+                  // Keep only digits; limit to 5
+                  const digits = e.target.value.replace(/\D/g, '').slice(0, 5);
+                  setJoinRoomId(digits);
+                }}
                 placeholder="Enter 5-digit room code"
                 maxLength={5}
                 className="w-full px-4 py-3 bg-dark border border-gray-700 rounded-lg focus:outline-none focus:border-primary text-white text-center text-2xl font-mono tracking-widest"
