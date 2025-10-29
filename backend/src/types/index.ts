@@ -32,6 +32,8 @@ export interface ChatMessage {
   username: string;
   message: string;
   timestamp: number;
+  // Optional correlation id sent by client to reconcile optimistic UI
+  clientMessageId?: string;
 }
 
 export interface SocketUser {

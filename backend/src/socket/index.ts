@@ -233,12 +233,12 @@ export function setupSocketHandlers(io: SocketIOServer) {
      * Chat Message Handler
      * Broadcasts message with XSS protection
      */
-    socket.on('chat-message', async (data: { roomId: string; message: string }) => {
+  socket.on('chat-message', async (data: { roomId: string; message: string; clientMessageId?: string }) => {
       try {
         const socketUser = activeSockets.get(socket.id);
         if (!socketUser) return;
 
-        const { roomId, message } = data;
+  const { roomId, message, clientMessageId } = data;
         
         // Basic XSS protection: escape HTML
         const sanitizedMessage = message
@@ -252,6 +252,7 @@ export function setupSocketHandlers(io: SocketIOServer) {
           username: socketUser.username,
           message: sanitizedMessage,
           timestamp: Date.now(),
+          clientMessageId,
         };
 
         // Store in room history (keep last 100 messages)
@@ -380,13 +381,24 @@ export function setupSocketHandlers(io: SocketIOServer) {
           const { roomId, userId, username } = socketUser;
           activeSockets.delete(socket.id);
 
+          // Notify others this user left
           socket.to(roomId).emit('user-left', {
             userId,
             username,
             serverTime: Date.now(),
           });
 
-          logger.info(`User ${username} disconnected from room ${roomId}`);
+          // If the host left, close the room for everyone
+          if (socketUser.isHost) {
+            const room = await getRoom(roomId);
+            if (room) {
+              // Remove the room from memory
+              rooms.delete(roomId);
+              io.to(roomId).emit('room-closed', { message: 'Host left. Room closed.' });
+            }
+          }
+
+          logger.info(`User ${username} disconnected from room ${roomId}${socketUser.isHost ? ' (host)' : ''}`);
         }
       } catch (error) {
         logger.error('Error handling disconnect:', error);
