@@ -138,7 +138,20 @@ function Room() {
               {room?.name}
               <span className="text-pink-400 text-sm">💕 Aahana & DEEP</span>
             </h1>
-            <p className="text-sm text-gray-400">Room ID: {roomId}</p>
+            {room?.code && (
+              <p className="text-sm text-gray-400 mt-1">
+                Room Code: <span className="text-pink-400 font-mono font-bold text-lg">{room.code}</span>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(room.code!);
+                    alert('Room code copied!');
+                  }}
+                  className="ml-2 text-xs bg-pink-500/20 hover:bg-pink-500/30 px-2 py-1 rounded"
+                >
+                  Copy
+                </button>
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-4">
             <button

@@ -7,6 +7,7 @@ export interface User {
 
 export interface Room {
   id: string;
+  code?: string; // 5-digit join code
   hostId: string;
   name: string;
   participants: string[];

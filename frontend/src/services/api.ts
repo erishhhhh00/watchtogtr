@@ -57,6 +57,11 @@ export const roomService = {
     return response.data;
   },
 
+  async getRoomByCode(code: string): Promise<{ room: Room }> {
+    const response = await api.get(`/rooms/code/${code}`);
+    return response.data;
+  },
+
   async joinRoom(roomId: string, userId: string): Promise<{ room: Room }> {
     const response = await api.post(`/rooms/${roomId}/join`, { userId });
     return response.data;

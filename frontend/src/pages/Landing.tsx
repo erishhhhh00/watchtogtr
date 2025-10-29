@@ -53,9 +53,7 @@ function Landing() {
     setLoading(true);
     setError('');
     try {
-      console.log('Attempting guest join with username:', username);
       const data = await authService.joinAsGuest(username);
-      console.log('Guest join successful:', data);
       setUser(data.user);
       setToken(data.token);
       if (joinRoomId) {
@@ -64,10 +62,7 @@ function Landing() {
         setMode('home');
       }
     } catch (err: any) {
-      console.error('Guest join error:', err);
-      console.error('Error response:', err.response);
-      const errorMsg = err.response?.data?.message || err.message || 'Failed to join as guest';
-      setError(errorMsg);
+      setError(err.response?.data?.message || 'Failed to join as guest');
     } finally {
       setLoading(false);
     }
@@ -92,14 +87,34 @@ function Landing() {
     }
   };
 
-  const handleJoinRoom = () => {
+  const handleJoinRoom = async () => {
     const user = useAuthStore.getState().user;
     if (!user) {
       setMode('guest');
       return;
     }
-    if (joinRoomId) {
-      navigate(`/room/${joinRoomId}`);
+    
+    if (!joinRoomId) {
+      setError('Please enter room code or ID');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    try {
+      let roomId = joinRoomId;
+      
+      // If 5-digit code, get room by code
+      if (/^\d{5}$/.test(joinRoomId)) {
+        const { room } = await roomService.getRoomByCode(joinRoomId);
+        roomId = room.id;
+      }
+      
+      navigate(`/room/${roomId}`);
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Room not found');
+    } finally {
+      setLoading(false);
     }
   };
 

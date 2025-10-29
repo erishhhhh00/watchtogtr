@@ -8,6 +8,11 @@ import Joi from 'joi';
 
 export const roomRouter = Router();
 
+// Generate 5-digit room code
+function generateRoomCode(): string {
+  return Math.floor(10000 + Math.random() * 90000).toString();
+}
+
 const createRoomSchema = Joi.object({
   name: Joi.string().min(3).max(50).required(),
   hostId: Joi.string().required(),
@@ -24,8 +29,11 @@ roomRouter.post('/', roomCreationLimiter, async (req, res, next) => {
     const { name, hostId, maxParticipants } = value;
 
     const roomId = uuidv4();
+    const roomCode = generateRoomCode();
+    
     const room: Room = {
       id: roomId,
+      code: roomCode,
       hostId,
       name,
       participants: [hostId],
@@ -60,6 +68,30 @@ roomRouter.get('/:roomId', async (req, res, next) => {
     }
 
     res.json({ room });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Join room by code
+roomRouter.get('/code/:code', async (req, res, next) => {
+  try {
+    const { code } = req.params;
+
+    // Find room by code
+    let foundRoom = null;
+    for (const [, room] of rooms.entries()) {
+      if (room.code === code) {
+        foundRoom = room;
+        break;
+      }
+    }
+
+    if (!foundRoom) {
+      throw new AppError('Room not found with this code', 404);
+    }
+
+    res.json({ room: foundRoom });
   } catch (err) {
     next(err);
   }
