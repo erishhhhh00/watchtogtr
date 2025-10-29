@@ -12,6 +12,7 @@ interface RoomStore {
   removeParticipant: (userId: string) => void;
   updatePlaybackState: (state: PlaybackState) => void;
   addMessage: (message: ChatMessage) => void;
+  upsertMessage: (message: ChatMessage) => void;
   setIsHost: (isHost: boolean) => void;
   clearRoom: () => void;
 }
@@ -39,6 +40,27 @@ export const useRoomStore = create<RoomStore>((set) => ({
     set((state) => ({
       messages: [...state.messages, message],
     })),
+  upsertMessage: (message) =>
+    set((state) => {
+      // Replace optimistic message by matching clientMessageId with existing id
+      if (message.clientMessageId) {
+        const idx = state.messages.findIndex((m) => m.id === message.clientMessageId);
+        if (idx !== -1) {
+          const next = state.messages.slice();
+          next[idx] = message;
+          return { messages: next } as Partial<RoomStore> as RoomStore;
+        }
+      }
+      // Or replace by id if exists
+      const idxById = state.messages.findIndex((m) => m.id === message.id);
+      if (idxById !== -1) {
+        const next = state.messages.slice();
+        next[idxById] = message;
+        return { messages: next } as Partial<RoomStore> as RoomStore;
+      }
+      // Append otherwise
+      return { messages: [...state.messages, message] } as Partial<RoomStore> as RoomStore;
+    }),
   setIsHost: (isHost) => set({ isHost }),
   clearRoom: () =>
     set({

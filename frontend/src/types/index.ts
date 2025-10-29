@@ -31,6 +31,7 @@ export interface ChatMessage {
   username: string;
   message: string;
   timestamp: number;
+  clientMessageId?: string;
 }
 
 export interface Participant {

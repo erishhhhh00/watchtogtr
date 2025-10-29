@@ -60,8 +60,8 @@ class SocketService {
   }
 
   // Chat Events
-  sendMessage(roomId: string, message: string) {
-    this.socket?.emit('chat-message', { roomId, message });
+  sendMessage(roomId: string, message: string, clientMessageId?: string) {
+    this.socket?.emit('chat-message', { roomId, message, clientMessageId });
   }
 
   // Host Controls

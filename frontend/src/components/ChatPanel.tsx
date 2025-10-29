@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useAuthStore } from '../stores/authStore';
 import { useRoomStore } from '../stores/roomStore';
 import { socketService } from '../services/socket';
+import type { ChatMessage } from '../types';
 
 interface VoiceChatState {
   isEnabled: boolean;
@@ -11,7 +12,7 @@ interface VoiceChatState {
 
 function ChatPanel() {
   const user = useAuthStore((state) => state.user);
-  const { room, messages, addMessage } = useRoomStore();
+  const { room, messages, addMessage, upsertMessage } = useRoomStore();
   const [inputMessage, setInputMessage] = useState('');
   const [voiceChat, setVoiceChat] = useState<VoiceChatState>({
     isEnabled: false,
@@ -26,11 +27,11 @@ function ChatPanel() {
     if (!hasSetupListeners.current) {
       socketService.onChatMessage((message) => {
         console.log('Received chat message:', message);
-        addMessage(message);
+        upsertMessage(message);
       });
       hasSetupListeners.current = true;
     }
-  }, [addMessage]);
+  }, [upsertMessage]);
 
   useEffect(() => {
     // Auto-scroll to bottom
@@ -41,8 +42,22 @@ function ChatPanel() {
     e.preventDefault();
     if (!inputMessage.trim() || !room) return;
 
-    console.log('Sending message:', inputMessage);
-    socketService.sendMessage(room.id, inputMessage);
+    const clientMessageId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    console.log('Sending message:', inputMessage, 'clientMessageId:', clientMessageId);
+
+    // Optimistic UI so mobile shows immediately
+    if (user) {
+      const optimistic: ChatMessage = {
+        id: clientMessageId,
+        userId: user.id,
+        username: user.username,
+        message: inputMessage,
+        timestamp: Date.now(),
+      };
+      addMessage(optimistic);
+    }
+
+    socketService.sendMessage(room.id, inputMessage, clientMessageId);
     setInputMessage('');
   };
 
