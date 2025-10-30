@@ -62,6 +62,7 @@ function VideoPlayer() {
   const ytPlayerRef = useRef<any>(null);
   const isBufferingRef = useRef<boolean>(false);
   const lastHardSeekAtRef = useRef<number>(0);
+  const scheduleTimerRef = useRef<number>();
 
   const playbackState = room?.playbackState;
 
@@ -264,14 +265,34 @@ function VideoPlayer() {
       lastHardSeekAtRef.current = Date.now();
     }
 
-    // Apply playback state immediately
-    if (playbackState.isPlaying && video.paused) {
-      video.play().catch((err) => {
-        console.error('Play error:', err);
-        setError('Failed to play video. Click the play button to try again.');
-      });
-    } else if (!playbackState.isPlaying && !video.paused) {
-      video.pause();
+    // Clear any earlier schedule
+    if (scheduleTimerRef.current) {
+      clearTimeout(scheduleTimerRef.current);
+      scheduleTimerRef.current = undefined as any;
+    }
+
+    // Schedule play/pause to the server-defined moment (nearly simultaneous start)
+    const serverNow = socketService.getServerTime();
+    const scheduleAt = playbackState.lastUpdated || 0; // server timestamp
+    const delayMs = scheduleAt > serverNow ? scheduleAt - serverNow : 0;
+
+    if (playbackState.isPlaying) {
+      const playAction = () => {
+        if (video.paused) {
+          video.play().catch((err) => {
+            console.error('Play error:', err);
+            setError('Failed to play video. Click the play button to try again.');
+          });
+        }
+      };
+      if (delayMs > 0) scheduleTimerRef.current = window.setTimeout(playAction, delayMs);
+      else playAction();
+    } else {
+      const pauseAction = () => {
+        if (!video.paused) video.pause();
+      };
+      if (delayMs > 0) scheduleTimerRef.current = window.setTimeout(pauseAction, delayMs);
+      else pauseAction();
     }
 
     // Adaptive drift correction (every 1000ms)
@@ -317,6 +338,10 @@ function VideoPlayer() {
       }
       // Reset playback rate when effect cleans up
       if (video) video.playbackRate = 1.0;
+      if (scheduleTimerRef.current) {
+        clearTimeout(scheduleTimerRef.current);
+        scheduleTimerRef.current = undefined as any;
+      }
     };
   }, [playbackState, videoType]);
 
@@ -341,15 +366,29 @@ function VideoPlayer() {
         lastHardSeekAtRef.current = Date.now();
       }
 
-      // Apply playback state immediately
+      // Clear earlier schedule
+      if (scheduleTimerRef.current) {
+        clearTimeout(scheduleTimerRef.current);
+        scheduleTimerRef.current = undefined as any;
+      }
+
+      // Apply playback state with scheduling to reduce perceived delay
+      const serverNow = socketService.getServerTime();
+      const scheduleAt = playbackState.lastUpdated || 0; // server timestamp
+      const delayMs = scheduleAt > serverNow ? scheduleAt - serverNow : 0;
+
       if (playbackState.isPlaying) {
-        if (player.getPlayerState() !== window.YT.PlayerState.PLAYING) {
-          player.playVideo();
-        }
+        const playAction = () => {
+          if (player.getPlayerState() !== window.YT.PlayerState.PLAYING) player.playVideo();
+        };
+        if (delayMs > 0) scheduleTimerRef.current = window.setTimeout(playAction, delayMs);
+        else playAction();
       } else {
-        if (player.getPlayerState() === window.YT.PlayerState.PLAYING) {
-          player.pauseVideo();
-        }
+        const pauseAction = () => {
+          if (player.getPlayerState() === window.YT.PlayerState.PLAYING) player.pauseVideo();
+        };
+        if (delayMs > 0) scheduleTimerRef.current = window.setTimeout(pauseAction, delayMs);
+        else pauseAction();
       }
 
       // Conservative drift correction for YT (every 1500ms)
@@ -383,6 +422,10 @@ function VideoPlayer() {
     return () => {
       if (driftCheckInterval.current) {
         clearInterval(driftCheckInterval.current);
+      }
+      if (scheduleTimerRef.current) {
+        clearTimeout(scheduleTimerRef.current);
+        scheduleTimerRef.current = undefined as any;
       }
     };
   }, [playbackState, videoType]);

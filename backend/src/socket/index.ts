@@ -113,10 +113,11 @@ export function setupSocketHandlers(io: SocketIOServer) {
         if (!room) return;
 
         const serverTime = Date.now();
+        const scheduleTime = serverTime + 250; // schedule 250ms in the future for near-simultaneous start
 
-        // Update playback state with server timestamp
+        // Update playback state with scheduled server timestamp
         room.playbackState.isPlaying = true;
-        room.playbackState.lastUpdated = serverTime;
+        room.playbackState.lastUpdated = scheduleTime;
 
         await setRoom(roomId, room);
 
@@ -124,6 +125,7 @@ export function setupSocketHandlers(io: SocketIOServer) {
         io.to(roomId).emit('sync-state', {
           playbackState: room.playbackState,
           serverTime,
+          scheduleTime,
         });
 
         logger.info(`Room ${roomId}: Play event at ${room.playbackState.currentTime}s`);
@@ -148,16 +150,28 @@ export function setupSocketHandlers(io: SocketIOServer) {
         if (!room) return;
 
         const serverTime = Date.now();
+        const scheduleTime = serverTime + 250;
+
+        // Compute expected position at pause schedule
+        if (room.playbackState.isPlaying) {
+          const elapsed = (scheduleTime - room.playbackState.lastUpdated) / 1000;
+          if (elapsed > 0) {
+            room.playbackState.currentTime += elapsed;
+          }
+        } else {
+          // If already paused, trust provided currentTime
+          room.playbackState.currentTime = currentTime;
+        }
 
         room.playbackState.isPlaying = false;
-        room.playbackState.currentTime = currentTime;
-        room.playbackState.lastUpdated = serverTime;
+        room.playbackState.lastUpdated = scheduleTime;
 
         await setRoom(roomId, room);
 
         io.to(roomId).emit('sync-state', {
           playbackState: room.playbackState,
           serverTime,
+          scheduleTime,
         });
 
         logger.info(`Room ${roomId}: Pause event at ${currentTime}s`);
@@ -183,15 +197,17 @@ export function setupSocketHandlers(io: SocketIOServer) {
         if (!room) return;
 
         const serverTime = Date.now();
+        const scheduleTime = serverTime + 250;
 
         room.playbackState.currentTime = currentTime;
-        room.playbackState.lastUpdated = serverTime;
+        room.playbackState.lastUpdated = scheduleTime;
 
         await setRoom(roomId, room);
 
         io.to(roomId).emit('sync-state', {
           playbackState: room.playbackState,
           serverTime,
+          scheduleTime,
         });
 
         logger.info(`Room ${roomId}: Seek to ${currentTime}s`);

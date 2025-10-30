@@ -131,7 +131,7 @@ class SocketService {
     });
   }
 
-  onSyncState(callback: (data: { playbackState: PlaybackState; serverTime: number }) => void) {
+  onSyncState(callback: (data: { playbackState: PlaybackState; serverTime: number; scheduleTime?: number }) => void) {
     this.socket?.on('sync-state', (data) => {
       this.updateServerTimeOffset(data.serverTime);
       callback(data);
