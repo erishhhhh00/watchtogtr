@@ -17,8 +17,13 @@ const app = express();
 const httpServer = createServer(app);
 
 // Helpers
+function isDev() {
+  return (process.env.NODE_ENV || 'development') !== 'production';
+}
+
 function getAllowedOrigins(): string[] {
-  const raw = process.env.CORS_ORIGIN || 'http://localhost:5173';
+  // Include common localhost variants by default for dev
+  const raw = process.env.CORS_ORIGIN || 'http://localhost:5173,http://127.0.0.1:5173';
   return raw.split(',').map((s) => s.trim()).filter(Boolean);
 }
 
@@ -26,6 +31,10 @@ function getAllowedOrigins(): string[] {
 app.use(helmet());
 app.use(cors({
   origin: (origin, callback) => {
+    // In development, allow any origin to simplify local/LAN testing
+    if (isDev()) {
+      return callback(null, true);
+    }
     const allowed = getAllowedOrigins();
     // Allow non-browser requests (no origin) and allowed origins
     if (!origin || allowed.includes(origin)) {
@@ -53,6 +62,9 @@ app.use(errorHandler);
 const io = new SocketIOServer(httpServer, {
   cors: {
     origin: (origin, callback) => {
+      if (isDev()) {
+        return callback(null, true);
+      }
       const allowed = getAllowedOrigins();
       if (!origin || allowed.includes(origin)) {
         return callback(null, true);

@@ -11,6 +11,8 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  // Prevent indefinite spinners if the backend is unreachable
+  timeout: 10000,
 });
 
 // Add auth token to requests
@@ -21,6 +23,22 @@ api.interceptors.request.use((config) => {
   }
   return config;
 });
+
+// Normalize network errors for clearer UI messages
+api.interceptors.response.use(
+  (res) => res,
+  (error) => {
+    // Axios timeout
+    if (error.code === 'ECONNABORTED') {
+      error.message = `Request timed out. Backend not responding at ${API_URL}.`;
+    }
+    // Network error / CORS failure
+    if (error.message && /Network Error/i.test(error.message)) {
+      error.message = `Cannot reach backend at ${API_URL}. Is the server running?`;
+    }
+    return Promise.reject(error);
+  }
+);
 
 export const authService = {
   async register(username: string, email: string, password: string): Promise<{ user: User; token: string }> {
