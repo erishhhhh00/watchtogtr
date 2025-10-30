@@ -60,6 +60,8 @@ function VideoPlayer() {
   const [videoType, setVideoType] = useState<'html5' | 'youtube'>('html5');
   const driftCheckInterval = useRef<number>();
   const ytPlayerRef = useRef<any>(null);
+  const isBufferingRef = useRef<boolean>(false);
+  const lastHardSeekAtRef = useRef<number>(0);
 
   const playbackState = room?.playbackState;
 
@@ -169,19 +171,35 @@ function VideoPlayer() {
         const handleCanPlay = () => {
           setIsLoading(false);
           console.log('Video can play');
+          isBufferingRef.current = false;
         };
         
         const handleError = () => {
           setIsLoading(false);
           setError('Failed to load video. Try using a direct video link (.mp4, .webm, .mkv)');
         };
+        const handleWaiting = () => {
+          isBufferingRef.current = true;
+        };
+        const handlePlaying = () => {
+          isBufferingRef.current = false;
+        };
+        const handleStalled = () => {
+          isBufferingRef.current = true;
+        };
         
         video.addEventListener('canplay', handleCanPlay);
         video.addEventListener('error', handleError);
+        video.addEventListener('waiting', handleWaiting);
+        video.addEventListener('playing', handlePlaying);
+        video.addEventListener('stalled', handleStalled);
         
         return () => {
           video.removeEventListener('canplay', handleCanPlay);
           video.removeEventListener('error', handleError);
+          video.removeEventListener('waiting', handleWaiting);
+          video.removeEventListener('playing', handlePlaying);
+          video.removeEventListener('stalled', handleStalled);
         };
       }
     }
@@ -193,13 +211,13 @@ function VideoPlayer() {
 
     const video = videoRef.current;
 
-    // Immediate sync: Set video time to expected time
+    // Gentle initial sync: only hard-seek if drift is large (>1.0s) and not buffering
     const expectedTime = socketService.calculateExpectedTime(playbackState);
-    const currentDrift = Math.abs(video.currentTime - expectedTime);
-    
-    if (currentDrift > 0.3) {
-      console.log(`Initial sync: correcting ${currentDrift.toFixed(2)}s drift`);
+    const initialDrift = expectedTime - video.currentTime;
+    if (Math.abs(initialDrift) > 1.0 && !isBufferingRef.current && video.readyState >= 3) {
+      console.log(`Initial sync: hard-correcting ${Math.abs(initialDrift).toFixed(2)}s drift`);
       video.currentTime = expectedTime;
+      lastHardSeekAtRef.current = Date.now();
     }
 
     // Apply playback state immediately
@@ -212,27 +230,49 @@ function VideoPlayer() {
       video.pause();
     }
 
-    // Faster drift correction (every 500ms instead of 1000ms)
+    // Adaptive drift correction (every 1000ms)
     driftCheckInterval.current = window.setInterval(() => {
       if (!video.paused && playbackState.isPlaying) {
-        const expectedTime = socketService.calculateExpectedTime(playbackState);
-        const currentTime = video.currentTime;
-        const drift = Math.abs(expectedTime - currentTime);
+        const expected = socketService.calculateExpectedTime(playbackState);
+        const current = video.currentTime;
+        const drift = expected - current; // positive = we're behind
 
-        // Tighter tolerance: 0.3s instead of 0.5s
-        if (drift > 0.3) {
-          console.log(`Drift detected: ${drift.toFixed(2)}s, resyncing...`);
-          video.currentTime = expectedTime;
+        // Skip corrections while buffering
+        if (isBufferingRef.current) {
+          setLocalTime(current);
+          return;
+        }
+
+        const now = Date.now();
+        // Large drift → hard seek but no more often than every 2s
+        if (Math.abs(drift) > 1.5 && video.readyState >= 3 && now - lastHardSeekAtRef.current > 2000) {
+          console.log(`Hard resync: drift ${drift.toFixed(2)}s`);
+          video.currentTime = expected;
+          video.playbackRate = 1.0;
+          lastHardSeekAtRef.current = now;
+        } else if (Math.abs(drift) > 0.3 && Math.abs(drift) <= 1.5) {
+          // Moderate drift → gently speed up or slow down
+          const desired = 1 + Math.max(-0.1, Math.min(0.1, (drift > 0 ? 0.08 : -0.08)));
+          if (Math.abs(video.playbackRate - desired) > 0.01) {
+            video.playbackRate = desired;
+          }
+        } else {
+          // In sync → normalize rate
+          if (Math.abs(video.playbackRate - 1.0) > 0.01) {
+            video.playbackRate = 1.0;
+          }
         }
       }
 
       setLocalTime(video.currentTime);
-    }, 500);
+    }, 1000);
 
     return () => {
       if (driftCheckInterval.current) {
         clearInterval(driftCheckInterval.current);
       }
+      // Reset playback rate when effect cleans up
+      if (video) video.playbackRate = 1.0;
     };
   }, [playbackState, videoType]);
 
@@ -243,14 +283,14 @@ function VideoPlayer() {
     const player = ytPlayerRef.current;
 
     try {
-      // Immediate sync: Set video time to expected time
+      // Gentle initial sync for YT: only hard seek if >1.0s
       const expectedTime = socketService.calculateExpectedTime(playbackState);
       const currentTime = player.getCurrentTime?.() || 0;
-      const currentDrift = Math.abs(currentTime - expectedTime);
-      
-      if (currentDrift > 0.3) {
-        console.log(`Initial sync: correcting ${currentDrift.toFixed(2)}s drift`);
+      const initialDrift = expectedTime - currentTime;
+      if (Math.abs(initialDrift) > 1.0) {
+        console.log(`Initial YT sync: hard-correcting ${Math.abs(initialDrift).toFixed(2)}s drift`);
         player.seekTo(expectedTime, true);
+        lastHardSeekAtRef.current = Date.now();
       }
 
       // Apply playback state immediately
@@ -264,22 +304,37 @@ function VideoPlayer() {
         }
       }
 
-      // Faster drift correction (every 500ms instead of 1000ms)
+      // Adaptive drift correction for YT (every 1000ms)
       driftCheckInterval.current = window.setInterval(() => {
         if (player.getPlayerState() === window.YT.PlayerState.PLAYING && playbackState.isPlaying) {
           const expectedTime = socketService.calculateExpectedTime(playbackState);
           const currentTime = player.getCurrentTime();
-          const drift = Math.abs(expectedTime - currentTime);
+          const drift = expectedTime - currentTime; // positive = behind
 
-          // Tighter tolerance: 0.3s instead of 0.5s
-          if (drift > 0.3) {
-            console.log(`Drift detected: ${drift.toFixed(2)}s, resyncing...`);
+          const now = Date.now();
+          if (Math.abs(drift) > 1.5 && now - lastHardSeekAtRef.current > 2000) {
+            console.log(`YT hard resync: drift ${drift.toFixed(2)}s`);
             player.seekTo(expectedTime, true);
+            player.setPlaybackRate?.(1.0);
+            lastHardSeekAtRef.current = now;
+          } else if (Math.abs(drift) > 0.3 && Math.abs(drift) <= 1.5) {
+            // Nudge playback rate using available rates
+            const rates: number[] = player.getAvailablePlaybackRates?.() || [0.5, 0.75, 1, 1.25, 1.5, 2];
+            const desired = drift > 0 ? 1.25 : 0.75;
+            const pick = rates.reduce((prev, curr) => Math.abs(curr - desired) < Math.abs(prev - desired) ? curr : prev, rates[0]);
+            if (player.getPlaybackRate && Math.abs(player.getPlaybackRate() - pick) > 0.01) {
+              player.setPlaybackRate?.(pick);
+            }
+          } else {
+            // Normalize
+            if (player.getPlaybackRate && Math.abs(player.getPlaybackRate() - 1.0) > 0.01) {
+              player.setPlaybackRate?.(1.0);
+            }
           }
 
           setLocalTime(currentTime);
         }
-      }, 500);
+      }, 1000);
     } catch (err) {
       console.error('YouTube player error:', err);
     }
