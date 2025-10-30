@@ -32,6 +32,7 @@ export interface ChatMessage {
   message: string;
   timestamp: number;
   clientMessageId?: string;
+  isSystem?: boolean;
 }
 
 export interface Participant {

@@ -13,6 +13,7 @@ interface RoomStore {
   updatePlaybackState: (state: PlaybackState) => void;
   addMessage: (message: ChatMessage) => void;
   upsertMessage: (message: ChatMessage) => void;
+  setMessages: (messages: ChatMessage[]) => void;
   setIsHost: (isHost: boolean) => void;
   clearRoom: () => void;
 }
@@ -61,6 +62,7 @@ export const useRoomStore = create<RoomStore>((set) => ({
       // Append otherwise
       return { messages: [...state.messages, message] } as Partial<RoomStore> as RoomStore;
     }),
+  setMessages: (messages) => set({ messages }),
   setIsHost: (isHost) => set({ isHost }),
   clearRoom: () =>
     set({

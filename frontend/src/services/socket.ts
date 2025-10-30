@@ -125,6 +125,10 @@ class SocketService {
     this.socket?.on('kicked', callback);
   }
 
+  onRoomClosed(callback: () => void) {
+    this.socket?.on('room-closed', callback);
+  }
+
   onError(callback: (error: { message: string }) => void) {
     this.socket?.on('error', callback);
   }

@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useRoomStore } from '../stores/roomStore';
 import { socketService } from '../services/socket';
-import { roomService } from '../services/api';
+import { roomService, authService } from '../services/api';
 import VideoPlayer from '../components/VideoPlayer';
 import ChatPanel from '../components/ChatPanel';
 import ParticipantsList from '../components/ParticipantsList';
@@ -13,37 +13,58 @@ function Room() {
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
-  const { room, setRoom, setParticipants, addParticipant, removeParticipant, updatePlaybackState, setIsHost, clearRoom } =
+  const { room, setRoom, setParticipants, addParticipant, removeParticipant, updatePlaybackState, setIsHost, clearRoom, setMessages } =
     useRoomStore();
+  const participants = useRoomStore((state) => state.participants);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const socketConnected = useRef(false);
 
   useEffect(() => {
-    if (!user || !roomId) {
-      console.error('Missing user or roomId:', { user, roomId });
-      setError('User not authenticated or room ID missing');
-      setLoading(false);
-      return;
-    }
-
     const init = async () => {
       try {
+        if (!roomId) {
+          console.error('Missing roomId');
+          setError('Room ID missing');
+          setLoading(false);
+          return;
+        }
+
+        // Ensure we have a user; if not, auto-join as a guest
+        let currentUser = user;
+        if (!currentUser) {
+          const guestName = `Guest-${Math.floor(1000 + Math.random() * 9000)}`;
+          try {
+            const data = await authService.joinAsGuest(guestName);
+            useAuthStore.getState().setUser(data.user);
+            useAuthStore.getState().setToken(data.token);
+            currentUser = data.user;
+          } catch (e) {
+            console.error('Auto guest join failed', e);
+            setError('Failed to authenticate as guest');
+            setLoading(false);
+            return;
+          }
+        }
+
         console.log('Fetching room:', roomId);
         // Fetch room details
         const { room: roomData } = await roomService.getRoom(roomId);
         console.log('Room data received:', roomData);
         
-        await roomService.joinRoom(roomId, user.id);
+        await roomService.joinRoom(roomId, currentUser.id);
         console.log('Joined room successfully');
         
         setRoom(roomData);
-        setIsHost(roomData.hostId === user.id);
+        if (roomData.chatHistory) {
+          setMessages(roomData.chatHistory);
+        }
+        setIsHost(roomData.hostId === currentUser.id);
         
         // Connect socket
         if (!socketConnected.current) {
           socketService.connect();
-          socketService.joinRoom(roomId, user.id, user.username);
+          socketService.joinRoom(roomId, currentUser.id, currentUser.username);
           socketConnected.current = true;
         }
 
@@ -64,10 +85,27 @@ function Room() {
             isHost: data.isHost,
             isMuted: false,
           });
+          // System message to everyone else
+          useRoomStore.getState().addMessage({
+            id: `sys-join-${data.userId}-${Date.now()}`,
+            userId: 'system',
+            username: 'System',
+            message: `${data.username} joined the room`,
+            timestamp: Date.now(),
+            isSystem: true,
+          });
         });
 
         socketService.onUserLeft((data) => {
           removeParticipant(data.userId);
+          useRoomStore.getState().addMessage({
+            id: `sys-left-${data.userId}-${Date.now()}`,
+            userId: 'system',
+            username: 'System',
+            message: `${data.username} left the room`,
+            timestamp: Date.now(),
+            isSystem: true,
+          });
         });
 
         socketService.onKicked(() => {
@@ -77,6 +115,13 @@ function Room() {
 
         socketService.onError((err) => {
           setError(err.message);
+        });
+
+        // Host leaves → room closed
+        socketService.onRoomClosed(() => {
+          alert('Host left. Room is closed.');
+          clearRoom();
+          navigate('/');
         });
 
         setLoading(false);
@@ -154,6 +199,9 @@ function Room() {
             )}
           </div>
           <div className="flex items-center gap-4">
+            <div className="text-sm text-gray-300">
+              👥 Participants: <span className="font-semibold text-white">{participants.length}</span>
+            </div>
             <button
               onClick={() => {
                 navigator.clipboard.writeText(window.location.href);

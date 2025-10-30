@@ -57,7 +57,13 @@ function Landing() {
       setUser(data.user);
       setToken(data.token);
       if (joinRoomId) {
-        navigate(`/room/${joinRoomId}`);
+        // Resolve 5-digit codes to actual room IDs before navigating
+        let target = (joinRoomId || '').trim();
+        if (/^\d{5}$/.test(target)) {
+          const { room } = await roomService.getRoomByCode(target);
+          target = room.id;
+        }
+        navigate(`/room/${target}`);
       } else {
         setMode('home');
       }
