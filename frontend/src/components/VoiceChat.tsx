@@ -28,15 +28,80 @@ function VoiceChat() {
     ],
   };
 
+  // Helper: Prefer Opus and tune SDP for resilient voice
+  const tuneAudioSdp = (sdp: string) => {
+    try {
+      // Find Opus payload type
+      const mAudio = sdp.match(/m=audio[^\n]+/);
+      if (!mAudio) return sdp;
+      // Ensure opus is preferred in codec order
+      const opusRtp = sdp.match(/a=rtpmap:(\d+) opus\//i);
+      if (!opusRtp) return sdp;
+      const opusPt = opusRtp[1];
+      const mLine = mAudio[0];
+      const parts = mLine.split(' ');
+      const header = parts.slice(0, 3).join(' ');
+      const payloads = parts.slice(3).filter((pt) => pt !== opusPt);
+      const newMLine = `${header} ${opusPt} ${payloads.join(' ')}`.trim();
+      sdp = sdp.replace(mLine, newMLine);
+
+      // Add or update Opus fmtp parameters for better resilience
+      const fmtpRegex = new RegExp(`a=fmtp:${opusPt} ([^\n]*)`);
+      const existing = sdp.match(fmtpRegex);
+      const tune = 'stereo=0;maxaveragebitrate=32000;useinbandfec=1;usedtx=1;ptime=20';
+      if (existing) {
+        const params = existing[1];
+        // merge without duplicates
+        const merged = params
+          .split(';')
+          .map((p) => p.trim())
+          .filter(Boolean)
+          .reduce<Record<string, string>>((acc, kv) => {
+            const [k, v] = kv.split('=');
+            if (k) acc[k] = v ?? '';
+            return acc;
+          }, {});
+        tune.split(';').forEach((kv) => {
+          const [k, v] = kv.split('=');
+          if (k) merged[k] = v ?? '';
+        });
+        const finalParams = Object.entries(merged)
+          .map(([k, v]) => (v ? `${k}=${v}` : k))
+          .join(';');
+        sdp = sdp.replace(fmtpRegex, `a=fmtp:${opusPt} ${finalParams}`);
+      } else {
+        // Insert fmtp line after rtpmap
+        const rtpmapLine = new RegExp(`a=rtpmap:${opusPt} opus/.*`);
+        sdp = sdp.replace(rtpmapLine, (line) => `${line}\r\na=fmtp:${opusPt} ${tune}`);
+      }
+    } catch {}
+    return sdp;
+  };
+
   // Create peer connection
   const createPeerConnection = async (targetUserId: string, targetUsername: string) => {
-    const pc = new RTCPeerConnection(ICE_SERVERS);
+    const pc = new RTCPeerConnection({
+      ...ICE_SERVERS,
+      bundlePolicy: 'balanced',
+      iceTransportPolicy: 'all',
+    });
 
     // Add local audio track
     if (localStreamRef.current) {
-      localStreamRef.current.getAudioTracks().forEach((track) => {
-        pc.addTrack(track, localStreamRef.current!);
-      });
+      const [track] = localStreamRef.current.getAudioTracks();
+      if (track) {
+        const sender = pc.addTrack(track, localStreamRef.current!);
+        // Try setting a conservative bitrate to reduce jitter
+        try {
+          const params = sender.getParameters();
+          params.encodings = params.encodings || [{}];
+          params.encodings[0].maxBitrate = 32000; // ~32kbps for voice
+          // Some browsers support ptime via SDP only; bitrate here still helps
+          await sender.setParameters(params);
+        } catch (e) {
+          console.warn('setParameters not supported:', e);
+        }
+      }
     }
 
     // Handle incoming tracks
@@ -49,6 +114,8 @@ function VoiceChat() {
       if (!audioElement) {
         audioElement = new Audio();
         audioElement.autoplay = true;
+        audioElement.setAttribute('playsinline', 'true');
+        audioElement.preload = 'auto';
         audioElementsRef.current.set(targetUserId, audioElement);
       }
       audioElement.srcObject = remoteStream;
@@ -86,6 +153,9 @@ function VoiceChat() {
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
+          channelCount: 1,
+          sampleRate: 48000,
+          sampleSize: 16,
         } 
       });
       
@@ -100,7 +170,9 @@ function VoiceChat() {
             const pc = await createPeerConnection(participant.userId, participant.username);
             
             // Create and send offer
-            const offer = await pc.createOffer();
+            let offer = await pc.createOffer({ offerToReceiveAudio: true });
+            // Tune SDP for Opus resilience
+            offer = { ...offer, sdp: tuneAudioSdp(offer.sdp || '') };
             await pc.setLocalDescription(offer);
             socketService.sendOffer(room.id, offer, participant.userId);
           }
@@ -158,7 +230,8 @@ function VoiceChat() {
       const pc = await createPeerConnection(data.fromUserId, data.fromUsername);
       await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
       
-      const answer = await pc.createAnswer();
+      let answer = await pc.createAnswer({ offerToReceiveAudio: true });
+      answer = { ...answer, sdp: tuneAudioSdp(answer.sdp || '') };
       await pc.setLocalDescription(answer);
       
       socketService.sendAnswer(room.id, answer, data.fromUserId);
@@ -181,6 +254,16 @@ function VoiceChat() {
         await peerConnection.pc.addIceCandidate(new RTCIceCandidate(data.candidate));
       }
     };
+
+    // Connection quality logs
+    peerConnectionsRef.current.forEach(({ pc }, uid) => {
+      pc.oniceconnectionstatechange = () => {
+        console.log(`[Voice][${uid}] ICE state:`, pc.iceConnectionState);
+      };
+      pc.onconnectionstatechange = () => {
+        console.log(`[Voice][${uid}] Conn state:`, pc.connectionState);
+      };
+    });
 
     socketService.onWebRTCOffer(handleOffer);
     socketService.onWebRTCAnswer(handleAnswer);
