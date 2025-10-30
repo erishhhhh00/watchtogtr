@@ -370,7 +370,7 @@ export function setupSocketHandlers(io: SocketIOServer) {
         );
 
         if (!targetSocket) {
-          socket.emit('error', { message: 'User not found in room' });
+          io.to(socket.id).emit('kick-result', { ok: false, message: 'User not found in room' });
           return;
         }
 
@@ -378,7 +378,7 @@ export function setupSocketHandlers(io: SocketIOServer) {
 
         // Prevent kicking host (safety)
         if (targetUser.isHost) {
-          socket.emit('error', { message: 'Cannot kick the host' });
+          io.to(socket.id).emit('kick-result', { ok: false, message: 'Cannot kick the host' });
           return;
         }
 
@@ -399,12 +399,15 @@ export function setupSocketHandlers(io: SocketIOServer) {
           await setRoom(roomId, room);
         }
 
-        // Notify others
-        socket.to(roomId).emit('user-left', {
+        // Notify others (including host)
+        io.to(roomId).emit('user-left', {
           userId,
           username: targetUser.username,
           serverTime: Date.now(),
         });
+
+        // Acknowledge to host
+        io.to(socket.id).emit('kick-result', { ok: true, userId });
       } catch (error) {
         logger.error('Error kicking user:', error);
       }

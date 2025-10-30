@@ -135,6 +135,10 @@ class SocketService {
     this.socket?.on('kicked', callback);
   }
 
+  onKickResult(callback: (data: { ok: boolean; userId?: string; message?: string }) => void) {
+    this.socket?.on('kick-result', callback);
+  }
+
   onRoomClosed(callback: () => void) {
     this.socket?.on('room-closed', callback);
   }
