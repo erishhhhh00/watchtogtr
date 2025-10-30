@@ -9,6 +9,7 @@ import { errorHandler } from './middleware/errorHandler';
 import { authRouter } from './routes/auth';
 import { roomRouter } from './routes/rooms';
 import { setupSocketHandlers } from './socket';
+import { proxyRouter } from './routes/proxy';
 import { rateLimiter } from './middleware/rateLimiter';
 
 dotenv.config();
@@ -54,6 +55,7 @@ app.get('/health', (_req, res) => {
 
 app.use('/api/auth', authRouter);
 app.use('/api/rooms', roomRouter);
+app.use('/api/proxy', proxyRouter);
 
 // Error handling
 app.use(errorHandler);
