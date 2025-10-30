@@ -52,6 +52,10 @@ function VoiceChat() {
         audioElementsRef.current.set(targetUserId, audioElement);
       }
       audioElement.srcObject = remoteStream;
+      // Try to play immediately (some browsers require this)
+      audioElement.play().catch((err) => {
+        console.warn('Auto-play blocked, waiting for user gesture:', err);
+      });
     };
 
     // Handle ICE candidates

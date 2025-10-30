@@ -361,10 +361,39 @@ export function setupSocketHandlers(io: SocketIOServer) {
           ([_, user]) => user.userId === userId && user.roomId === roomId
         );
 
-        if (targetSocket) {
-          io.to(targetSocket[0]).emit('kicked', { message: 'You were removed from the room' });
-          io.sockets.sockets.get(targetSocket[0])?.leave(roomId);
+        if (!targetSocket) {
+          socket.emit('error', { message: 'User not found in room' });
+          return;
         }
+
+        const [targetSocketId, targetUser] = targetSocket;
+
+        // Prevent kicking host (safety)
+        if (targetUser.isHost) {
+          socket.emit('error', { message: 'Cannot kick the host' });
+          return;
+        }
+
+        // Notify target and force them to leave the room
+        io.to(targetSocketId).emit('kicked', { message: 'You were removed from the room' });
+        io.sockets.sockets.get(targetSocketId)?.leave(roomId);
+
+        // Remove presence
+        activeSockets.delete(targetSocketId);
+
+        // Update room participants
+        const room = await getRoom(roomId);
+        if (room) {
+          room.participants = room.participants.filter((pid) => pid !== userId);
+          await setRoom(roomId, room);
+        }
+
+        // Notify others
+        socket.to(roomId).emit('user-left', {
+          userId,
+          username: targetUser.username,
+          serverTime: Date.now(),
+        });
       } catch (error) {
         logger.error('Error kicking user:', error);
       }

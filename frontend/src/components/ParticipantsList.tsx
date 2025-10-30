@@ -1,4 +1,5 @@
 import { useRoomStore } from '../stores/roomStore';
+import { socketService } from '../services/socket';
 
 function ParticipantsList() {
   const { participants, isHost } = useRoomStore();
@@ -6,9 +7,7 @@ function ParticipantsList() {
 
   const handleKick = (userId: string) => {
     if (isHost && room && window.confirm('Kick this user?')) {
-      // Kick functionality is already in socket service
-      // For now, we'll skip implementing full kick UI
-      console.log('Kick user:', userId);
+      socketService.kickUser(room.id, userId);
     }
   };
 
