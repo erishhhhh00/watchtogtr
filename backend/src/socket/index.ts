@@ -241,12 +241,12 @@ export function setupSocketHandlers(io: SocketIOServer) {
      * Chat Message Handler
      * Broadcasts message with XSS protection
      */
-  socket.on('chat-message', async (data: { roomId: string; message: string; clientMessageId?: string }) => {
+  socket.on('chat-message', async (data: { roomId: string; message: string; clientMessageId?: string; imageUrl?: string; type?: string }) => {
       try {
         const socketUser = activeSockets.get(socket.id);
         if (!socketUser) return;
 
-  const { roomId, message, clientMessageId } = data;
+  const { roomId, message, clientMessageId, imageUrl, type } = data;
         
         // Basic XSS protection: escape HTML
         const sanitizedMessage = message
@@ -261,6 +261,8 @@ export function setupSocketHandlers(io: SocketIOServer) {
           message: sanitizedMessage,
           timestamp: Date.now(),
           clientMessageId,
+          imageUrl, // Include image URL if present
+          type: (type as any) || 'text',
         };
 
         // Store in room history (keep last 100 messages)

@@ -101,8 +101,8 @@ class SocketService {
   }
 
   // Chat Events
-  sendMessage(roomId: string, message: string, clientMessageId?: string) {
-    this.socket?.emit('chat-message', { roomId, message, clientMessageId });
+  sendMessage(roomId: string, message: string, clientMessageId?: string, imageUrl?: string, type?: string) {
+    this.socket?.emit('chat-message', { roomId, message, clientMessageId, imageUrl, type });
   }
 
   // Host Controls

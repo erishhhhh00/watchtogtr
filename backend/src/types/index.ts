@@ -36,6 +36,10 @@ export interface ChatMessage {
   timestamp: number;
   // Optional correlation id sent by client to reconcile optimistic UI
   clientMessageId?: string;
+  // Image attachment (base64 or URL)
+  imageUrl?: string;
+  // Message type
+  type?: 'text' | 'image' | 'system';
 }
 
 export interface SocketUser {

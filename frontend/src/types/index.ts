@@ -33,6 +33,8 @@ export interface ChatMessage {
   timestamp: number;
   clientMessageId?: string;
   isSystem?: boolean;
+  imageUrl?: string;
+  type?: 'text' | 'image' | 'system';
 }
 
 export interface Participant {

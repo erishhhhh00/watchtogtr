@@ -14,6 +14,7 @@ function ChatPanel() {
   const user = useAuthStore((state) => state.user);
   const { room, messages, addMessage, upsertMessage } = useRoomStore();
   const [inputMessage, setInputMessage] = useState('');
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [voiceChat, setVoiceChat] = useState<VoiceChatState>({
     isEnabled: false,
     isMuted: false,
@@ -21,6 +22,7 @@ function ChatPanel() {
   });
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const hasSetupListeners = useRef(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     // Listen for chat messages - setup only once
@@ -40,10 +42,12 @@ function ChatPanel() {
 
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputMessage.trim() || !room) return;
+    if ((!inputMessage.trim() && !selectedImage) || !room) return;
 
     const clientMessageId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     console.log('Sending message:', inputMessage, 'clientMessageId:', clientMessageId);
+
+    const messageType = selectedImage ? 'image' : 'text';
 
     // Optimistic UI so mobile shows immediately
     if (user) {
@@ -51,14 +55,48 @@ function ChatPanel() {
         id: clientMessageId,
         userId: user.id,
         username: user.username,
-        message: inputMessage,
+        message: inputMessage || (selectedImage ? '📷 Image' : ''),
         timestamp: Date.now(),
+        imageUrl: selectedImage || undefined,
+        type: messageType,
       };
       addMessage(optimistic);
     }
 
-    socketService.sendMessage(room.id, inputMessage, clientMessageId);
+    socketService.sendMessage(room.id, inputMessage, clientMessageId, selectedImage || undefined, messageType);
     setInputMessage('');
+    setSelectedImage(null);
+  };
+
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Limit file size to 5MB
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Image size must be less than 5MB');
+      return;
+    }
+
+    // Check file type
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file');
+      return;
+    }
+
+    // Convert to base64
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setSelectedImage(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const removeSelectedImage = () => {
+    setSelectedImage(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   const toggleVoiceChat = async () => {
@@ -165,20 +203,36 @@ function ChatPanel() {
             <div
               key={msg.id}
               className={`p-2 rounded-lg ${
-                msg.userId === user?.id
+                msg.isSystem 
+                  ? 'bg-gray-700/30 mx-auto max-w-xs text-center'
+                  : msg.userId === user?.id
                   ? 'bg-primary/20 ml-4'
                   : 'bg-dark mr-4'
               }`}
             >
               <div className="flex items-baseline gap-2 mb-1">
-                <span className="text-xs font-semibold text-white">
+                <span className={`text-xs font-semibold ${msg.isSystem ? 'text-gray-400' : 'text-white'}`}>
                   {msg.username}
                 </span>
                 <span className="text-xs text-gray-500">
                   {new Date(msg.timestamp).toLocaleTimeString()}
                 </span>
               </div>
-              <p className="text-sm text-gray-200">{msg.message}</p>
+              {msg.imageUrl && (
+                <div className="mb-2">
+                  <img 
+                    src={msg.imageUrl} 
+                    alt="Shared image"
+                    className="max-w-full max-h-64 rounded-lg cursor-pointer hover:opacity-90"
+                    onClick={() => window.open(msg.imageUrl, '_blank')}
+                  />
+                </div>
+              )}
+              {msg.message && (
+                <p className={`text-sm ${msg.isSystem ? 'text-gray-400 italic' : 'text-gray-200'}`}>
+                  {msg.message}
+                </p>
+              )}
             </div>
           ))
         )}
@@ -186,23 +240,58 @@ function ChatPanel() {
       </div>
 
       {/* Input */}
-      <form onSubmit={handleSend} className="flex gap-2">
-        <input
-          type="text"
-          value={inputMessage}
-          onChange={(e) => setInputMessage(e.target.value)}
-          placeholder="Type a message..."
-          className="flex-1 px-3 py-2 bg-dark border border-gray-700 rounded-lg focus:outline-none focus:border-primary text-white text-sm"
-          maxLength={500}
-        />
-        <button
-          type="submit"
-          disabled={!inputMessage.trim()}
-          className="px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg text-sm font-medium disabled:opacity-50"
-        >
-          Send
-        </button>
-      </form>
+      <div className="space-y-2">
+        {/* Image Preview */}
+        {selectedImage && (
+          <div className="relative inline-block">
+            <img 
+              src={selectedImage} 
+              alt="Preview" 
+              className="max-h-24 rounded-lg border border-gray-700"
+            />
+            <button
+              onClick={removeSelectedImage}
+              className="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs"
+              type="button"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+        
+        <form onSubmit={handleSend} className="flex gap-2">
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleImageSelect}
+            accept="image/*"
+            className="hidden"
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="p-2 bg-dark hover:bg-gray-700 border border-gray-700 rounded-lg text-white transition-colors"
+            title="Attach image"
+          >
+            <span className="text-lg">📷</span>
+          </button>
+          <input
+            type="text"
+            value={inputMessage}
+            onChange={(e) => setInputMessage(e.target.value)}
+            placeholder="Type a message..."
+            className="flex-1 px-3 py-2 bg-dark border border-gray-700 rounded-lg focus:outline-none focus:border-primary text-white text-sm"
+            maxLength={500}
+          />
+          <button
+            type="submit"
+            disabled={!inputMessage.trim() && !selectedImage}
+            className="px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg text-sm font-medium disabled:opacity-50"
+          >
+            Send
+          </button>
+        </form>
+      </div>
     </div>
   );
 }
