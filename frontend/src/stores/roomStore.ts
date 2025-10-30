@@ -26,9 +26,16 @@ export const useRoomStore = create<RoomStore>((set) => ({
   setRoom: (room) => set({ room }),
   setParticipants: (participants) => set({ participants }),
   addParticipant: (participant) =>
-    set((state) => ({
-      participants: [...state.participants, participant],
-    })),
+    set((state) => {
+      // Check if participant already exists to prevent duplicates
+      const exists = state.participants.some((p) => p.userId === participant.userId);
+      if (exists) {
+        return state;
+      }
+      return {
+        participants: [...state.participants, participant],
+      };
+    }),
   removeParticipant: (userId) =>
     set((state) => ({
       participants: state.participants.filter((p) => p.userId !== userId),
