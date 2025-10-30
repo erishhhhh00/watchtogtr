@@ -88,6 +88,8 @@ function VideoPlayer() {
           modestbranding: 1,
           rel: 0,
           playsinline: 1,
+          enablejsapi: 1,
+          origin: window.location.origin,
         },
         events: {
           onReady: () => {
@@ -97,15 +99,25 @@ function VideoPlayer() {
                 // Improve chance of autoplay on guests
                 ytPlayerRef.current.mute();
               }
-              if (playbackState?.isPlaying) {
-                ytPlayerRef.current.playVideo();
-              }
-              if (playbackState?.currentTime) {
-                ytPlayerRef.current.seekTo(playbackState.currentTime, true);
+              // If we have a valid videoId, play normally, else fall back to URL-based load
+              if (videoId) {
+                if (playbackState?.currentTime) {
+                  ytPlayerRef.current.seekTo(playbackState.currentTime, true);
+                }
+                if (playbackState?.isPlaying) {
+                  ytPlayerRef.current.playVideo();
+                }
+              } else if (playbackState?.url) {
+                const start = playbackState.currentTime || 0;
+                // Use loadVideoByUrl for unparsed share/short URLs
+                ytPlayerRef.current.loadVideoByUrl(playbackState.url, start);
               }
             } catch {}
           },
           onStateChange: (event: any) => {
+            if (event.data === window.YT.PlayerState.PLAYING) {
+              setIsLoading(false);
+            }
             if (isHost) {
               if (event.data === window.YT.PlayerState.PLAYING && room) {
                 socketService.play(room.id);
