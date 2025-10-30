@@ -4,6 +4,7 @@ import { useAuthStore } from '../stores/authStore';
 import { authService, roomService } from '../services/api';
 
 function Landing() {
+  const API_URL = (import.meta as any).env.VITE_API_URL || 'http://localhost:3001';
   const [mode, setMode] = useState<'home' | 'login' | 'register' | 'guest'>('home');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
@@ -340,8 +341,9 @@ function Landing() {
           </form>
         )}
 
-        <div className="pt-4 text-center text-xs text-gray-500">
+        <div className="pt-4 text-center text-xs text-gray-500 space-y-1">
           <p>By using this app, you agree that you have the rights to share any content you upload.</p>
+          <p className="opacity-70">Backend: <span className="font-mono">{API_URL}</span></p>
         </div>
       </div>
     </div>

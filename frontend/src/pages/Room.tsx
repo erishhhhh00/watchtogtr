@@ -10,6 +10,7 @@ import ParticipantsList from '../components/ParticipantsList';
 import Controls from '../components/Controls';
 
 function Room() {
+  const API_URL = (import.meta as any).env.VITE_API_URL || 'http://localhost:3001';
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
@@ -202,6 +203,7 @@ function Room() {
             <div className="text-sm text-gray-300">
               👥 Participants: <span className="font-semibold text-white">{participants.length}</span>
             </div>
+            <div className="hidden sm:block text-[10px] text-gray-500 font-mono">API: {API_URL}</div>
             <button
               onClick={() => {
                 navigator.clipboard.writeText(window.location.href);
