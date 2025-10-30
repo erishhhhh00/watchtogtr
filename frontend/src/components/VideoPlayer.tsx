@@ -87,16 +87,23 @@ function VideoPlayer() {
           controls: isHost ? 1 : 0,
           modestbranding: 1,
           rel: 0,
+          playsinline: 1,
         },
         events: {
           onReady: () => {
             setIsLoading(false);
-            if (playbackState?.isPlaying) {
-              ytPlayerRef.current.playVideo();
-            }
-            if (playbackState?.currentTime) {
-              ytPlayerRef.current.seekTo(playbackState.currentTime, true);
-            }
+            try {
+              if (!isHost) {
+                // Improve chance of autoplay on guests
+                ytPlayerRef.current.mute();
+              }
+              if (playbackState?.isPlaying) {
+                ytPlayerRef.current.playVideo();
+              }
+              if (playbackState?.currentTime) {
+                ytPlayerRef.current.seekTo(playbackState.currentTime, true);
+              }
+            } catch {}
           },
           onStateChange: (event: any) => {
             if (isHost) {
@@ -227,6 +234,8 @@ function VideoPlayer() {
     if (videoType !== 'html5' || !playbackState || !videoRef.current) return;
 
     const video = videoRef.current;
+    // Ensure guests are muted to satisfy autoplay policies
+    if (!isHost && !video.muted) video.muted = true;
 
     // Gentle initial sync: only hard-seek if drift is large (>1.0s) and not buffering
     const expectedTime = socketService.calculateExpectedTime(playbackState);
@@ -300,6 +309,10 @@ function VideoPlayer() {
     const player = ytPlayerRef.current;
 
     try {
+      // For guests, keep YT muted to ensure programmatic play works
+      if (!isHost && player.mute) {
+        try { player.mute(); } catch {}
+      }
       // Gentle initial sync for YT: only hard seek if >1.2s
       const expectedTime = socketService.calculateExpectedTime(playbackState);
       const currentTime = player.getCurrentTime?.() || 0;
@@ -385,6 +398,7 @@ function VideoPlayer() {
               ref={videoRef}
               className="w-full h-full"
               controls={isHost}
+              muted={!isHost}
               onPlay={handlePlay}
               onPause={handlePause}
               onSeeked={handleSeeked}
