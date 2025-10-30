@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import Hls from 'hls.js';
 import { useRoomStore } from '../stores/roomStore';
 import { socketService } from '../services/socket';
 
@@ -57,9 +58,10 @@ function VideoPlayer() {
   const [localTime, setLocalTime] = useState(0);
   const [error, setError] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
-  const [videoType, setVideoType] = useState<'html5' | 'youtube'>('html5');
+  const [videoType, setVideoType] = useState<'html5' | 'youtube' | 'hls'>('html5');
   const driftCheckInterval = useRef<number>();
   const ytPlayerRef = useRef<any>(null);
+  const hlsRef = useRef<Hls | null>(null);
   const isBufferingRef = useRef<boolean>(false);
   const lastHardSeekAtRef = useRef<number>(0);
   const scheduleTimerRef = useRef<number>();
@@ -169,6 +171,7 @@ function VideoPlayer() {
     
     // Determine video type and process URL
     const youtubeId = declaredType === 'youtube' ? (getYouTubeVideoId(url) || 'force') : getYouTubeVideoId(url);
+    const isHls = declaredType === 'hls' || /\.m3u8(\?|$)/i.test(url);
     
     if (youtubeId) {
       // YouTube video
@@ -188,6 +191,89 @@ function VideoPlayer() {
         const id = youtubeId === 'force' ? (getYouTubeVideoId(url) || '') : youtubeId;
         initYouTubePlayer(id);
       }, 100);
+    } else if (isHls) {
+      // HLS stream
+      setVideoType('hls');
+      setError('');
+      setIsLoading(true);
+      if (!videoRef.current) return;
+      const video = videoRef.current;
+
+      // Clean up existing HLS if any
+      try { hlsRef.current?.destroy(); } catch {}
+      hlsRef.current = null;
+
+      const useNative = video.canPlayType('application/vnd.apple.mpegURL');
+      const setupListeners = () => {
+        const handleCanPlay = () => { setIsLoading(false); isBufferingRef.current = false; };
+        const handleError = () => { setIsLoading(false); setError('Failed to load HLS stream (.m3u8).'); };
+        const handleWaiting = () => { isBufferingRef.current = true; };
+        const handlePlaying = () => { isBufferingRef.current = false; };
+        const handleStalled = () => { isBufferingRef.current = true; };
+        video.addEventListener('canplay', handleCanPlay);
+        video.addEventListener('error', handleError);
+        video.addEventListener('waiting', handleWaiting);
+        video.addEventListener('playing', handlePlaying);
+        video.addEventListener('stalled', handleStalled);
+        return () => {
+          video.removeEventListener('canplay', handleCanPlay);
+          video.removeEventListener('error', handleError);
+          video.removeEventListener('waiting', handleWaiting);
+          video.removeEventListener('playing', handlePlaying);
+          video.removeEventListener('stalled', handleStalled);
+        };
+      };
+
+      let cleanup: (() => void) | undefined;
+
+      if (useNative) {
+        // Safari / iOS: native HLS
+        video.src = url;
+        video.load();
+        video.currentTime = playbackState.currentTime;
+        cleanup = setupListeners();
+      } else if (Hls.isSupported()) {
+        const hls = new Hls({
+          enableWorker: true,
+          lowLatencyMode: false,
+          backBufferLength: 60,
+        });
+        hlsRef.current = hls;
+        hls.on(Hls.Events.ERROR, (_e, data) => {
+          // FATAL errors require recovery or destroy
+          if (data.fatal) {
+            try {
+              switch (data.type) {
+                case Hls.ErrorTypes.NETWORK_ERROR:
+                  hls.startLoad();
+                  break;
+                case Hls.ErrorTypes.MEDIA_ERROR:
+                  hls.recoverMediaError();
+                  break;
+                default:
+                  hls.destroy();
+                  hlsRef.current = null;
+                  setError('Failed to play HLS stream.');
+                  setIsLoading(false);
+                  break;
+              }
+            } catch {}
+          }
+        });
+        hls.loadSource(url);
+        hls.attachMedia(video);
+        video.currentTime = playbackState.currentTime;
+        cleanup = setupListeners();
+      } else {
+        setIsLoading(false);
+        setError('HLS not supported in this browser. Try a direct MP4/WebM link.');
+      }
+
+      return () => {
+        if (cleanup) cleanup();
+        try { hlsRef.current?.destroy(); } catch {}
+        hlsRef.current = null;
+      };
     } else {
       // HTML5 video (MP4, Google Drive, Seedr, etc.)
       setVideoType('html5');
@@ -219,7 +305,7 @@ function VideoPlayer() {
         
         const handleError = () => {
           setIsLoading(false);
-          setError('Failed to load video. Try using a direct video link (.mp4, .webm, .mkv)');
+          setError('Failed to load video. Use a direct MP4/WebM link, or an HLS .m3u8 stream.');
         };
         const handleWaiting = () => {
           isBufferingRef.current = true;
