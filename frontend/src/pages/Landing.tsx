@@ -55,16 +55,21 @@ function Landing() {
     setLoading(true);
     setError('');
     try {
+      console.log('[Landing] Registering guest with username:', username);
       const data = await authService.joinAsGuest(username);
+      console.log('[Landing] Guest registration successful:', data.user);
       setUser(data.user);
       setToken(data.token);
       
       // Execute the pending action (create or join)
       if (guestAction === 'create') {
+        console.log('[Landing] Creating room after guest registration...');
         // Create room after guest registration
         const { room } = await roomService.createRoom(roomName || 'My Room', data.user.id);
+        console.log('[Landing] Room created, navigating to:', room.id);
         navigate(`/room/${room.id}`);
       } else if (guestAction === 'join' && joinRoomId) {
+        console.log('[Landing] Joining room after guest registration...');
         // Join room after guest registration
         let target = (joinRoomId || '').trim();
         if (/^\d{5}$/.test(target)) {
@@ -76,7 +81,9 @@ function Landing() {
         setMode('home');
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to join as guest');
+      console.error('[Landing] Guest join error:', err);
+      console.error('[Landing] Error response:', err.response?.data);
+      setError(err.response?.data?.message || err.message || 'Failed to join as guest');
     } finally {
       setLoading(false);
     }

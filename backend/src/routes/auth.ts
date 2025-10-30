@@ -104,6 +104,8 @@ authRouter.post('/guest', async (req, res, next) => {
   try {
     const { username } = req.body;
     
+    console.log('[Auth] Guest registration request:', { username });
+    
     if (!username || username.length < 3) {
       throw new AppError('Username must be at least 3 characters', 400);
     }
@@ -124,11 +126,14 @@ authRouter.post('/guest', async (req, res, next) => {
       { expiresIn: '24h' }
     );
 
+    console.log('[Auth] Guest registered successfully:', { userId, username: guestUser.username });
+
     res.json({
       user: { id: userId, username: guestUser.username, isGuest: true },
       token,
     });
   } catch (err) {
+    console.error('[Auth] Guest registration error:', err);
     next(err);
   }
 });
