@@ -1,7 +1,11 @@
 import { io, Socket } from 'socket.io-client';
 import { PlaybackState, ChatMessage, Participant } from '../types';
 
-const WS_URL = import.meta.env.VITE_WS_URL || 'http://localhost:3001';
+// Prefer explicit WS URL; else fall back to API URL; else localhost
+const WS_URL =
+  import.meta.env.VITE_WS_URL ||
+  import.meta.env.VITE_API_URL ||
+  'http://localhost:3001';
 
 /**
  * Socket.IO Service for real-time communication
@@ -17,8 +21,10 @@ class SocketService {
     }
 
     this.socket = io(WS_URL, {
-      transports: ['websocket'],
+      // Allow both transports to maximize production compatibility behind proxies
+      transports: ['websocket', 'polling'],
       autoConnect: true,
+      withCredentials: true,
     });
 
     this.socket.on('connect', () => {
@@ -27,6 +33,10 @@ class SocketService {
 
     this.socket.on('disconnect', () => {
       console.log('Socket disconnected');
+    });
+
+    this.socket.on('connect_error', (err) => {
+      console.error('Socket connect_error:', err?.message || err);
     });
 
     return this.socket;
