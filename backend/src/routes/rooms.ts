@@ -47,6 +47,7 @@ roomRouter.post('/', roomCreationLimiter, async (req, res, next) => {
       chatHistory: [],
       createdAt: new Date(),
       maxParticipants: maxParticipants || 10,
+      bannedUntil: {},
     };
 
     // Store room in memory
@@ -112,6 +113,14 @@ roomRouter.post('/:roomId/join', async (req, res, next) => {
     }
 
     const room: Room = roomData;
+
+    // Check temporary ban
+    const now = Date.now();
+    const until = room.bannedUntil?.[userId];
+    if (until && now < until) {
+      const minutesLeft = Math.ceil((until - now) / 60000);
+      throw new AppError(`You are temporarily banned. Try again in ${minutesLeft} minute(s).`, 403);
+    }
 
     if (room.participants.length >= room.maxParticipants) {
       throw new AppError('Room is full', 403);

@@ -16,6 +16,8 @@ export interface Room {
   chatHistory: ChatMessage[];
   createdAt: Date;
   maxParticipants: number;
+  // userId -> unix ms until which user is banned from joining
+  bannedUntil?: Record<string, number>;
 }
 
 export interface PlaybackState {

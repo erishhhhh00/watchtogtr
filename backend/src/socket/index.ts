@@ -49,6 +49,14 @@ export function setupSocketHandlers(io: SocketIOServer) {
           socket.emit('error', { message: 'Room not found' });
           return;
         }
+        // Enforce temporary ban if present
+        const now = Date.now();
+        const until = room.bannedUntil?.[userId];
+        if (until && now < until) {
+          const minutesLeft = Math.ceil((until - now) / 60000);
+          socket.emit('error', { message: `You are temporarily banned. Try again in ${minutesLeft} minute(s).` });
+          return;
+        }
         const isHost = room.hostId === userId;
 
         // Store socket user info
@@ -385,6 +393,9 @@ export function setupSocketHandlers(io: SocketIOServer) {
         const room = await getRoom(roomId);
         if (room) {
           room.participants = room.participants.filter((pid) => pid !== userId);
+          // Add a 30-minute ban window
+          if (!room.bannedUntil) room.bannedUntil = {};
+          room.bannedUntil[userId] = Date.now() + 30 * 60 * 1000;
           await setRoom(roomId, room);
         }
 
