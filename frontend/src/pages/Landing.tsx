@@ -6,6 +6,7 @@ import { authService, roomService } from '../services/api';
 function Landing() {
   const API_URL = (import.meta as any).env.VITE_API_URL || 'http://localhost:3001';
   const [mode, setMode] = useState<'home' | 'login' | 'register' | 'guest'>('home');
+  const [guestAction, setGuestAction] = useState<'create' | 'join' | null>(null);
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -57,8 +58,14 @@ function Landing() {
       const data = await authService.joinAsGuest(username);
       setUser(data.user);
       setToken(data.token);
-      if (joinRoomId) {
-        // Resolve 5-digit codes to actual room IDs before navigating
+      
+      // Execute the pending action (create or join)
+      if (guestAction === 'create') {
+        // Create room after guest registration
+        const { room } = await roomService.createRoom(roomName || 'My Room', data.user.id);
+        navigate(`/room/${room.id}`);
+      } else if (guestAction === 'join' && joinRoomId) {
+        // Join room after guest registration
         let target = (joinRoomId || '').trim();
         if (/^\d{5}$/.test(target)) {
           const { room } = await roomService.getRoomByCode(target);
@@ -78,6 +85,7 @@ function Landing() {
   const handleCreateRoom = async () => {
     const user = useAuthStore.getState().user;
     if (!user) {
+      setGuestAction('create');
       setMode('guest');
       return;
     }
@@ -97,6 +105,7 @@ function Landing() {
   const handleJoinRoom = async () => {
     const user = useAuthStore.getState().user;
     if (!user) {
+      setGuestAction('join');
       setMode('guest');
       return;
     }
@@ -314,7 +323,9 @@ function Landing() {
         {mode === 'guest' && (
           <form onSubmit={handleGuestJoin} className="space-y-4">
             <p className="text-gray-400 text-sm">
-              Enter a username to join as a guest
+              {guestAction === 'create' 
+                ? 'Enter a username to create your room as a guest'
+                : 'Enter a username to join as a guest'}
             </p>
             <div>
               <label className="block text-sm font-medium mb-2">Username</label>
@@ -333,11 +344,14 @@ function Landing() {
               disabled={loading}
               className="w-full bg-primary hover:bg-primary/90 text-white font-semibold py-3 rounded-lg transition-colors disabled:opacity-50"
             >
-              {loading ? 'Joining...' : 'Continue as Guest'}
+              {loading ? 'Processing...' : 'Continue as Guest'}
             </button>
             <button
               type="button"
-              onClick={() => setMode('home')}
+              onClick={() => {
+                setMode('home');
+                setGuestAction(null);
+              }}
               className="w-full text-gray-400 hover:text-white transition-colors"
             >
               Back
