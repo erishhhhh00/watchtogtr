@@ -123,13 +123,26 @@ function VideoPlayer() {
     }
   };
 
+  // Cleanup YouTube player on unmount to avoid stale instances
+  useEffect(() => {
+    return () => {
+      try {
+        if (ytPlayerRef.current) {
+          ytPlayerRef.current.destroy();
+          ytPlayerRef.current = null;
+        }
+      } catch {}
+    };
+  }, []);
+
   useEffect(() => {
     if (!playbackState?.url) return;
 
     const url = playbackState.url;
+    const declaredType = playbackState.videoType;
     
     // Determine video type and process URL
-    const youtubeId = getYouTubeVideoId(url);
+    const youtubeId = declaredType === 'youtube' ? (getYouTubeVideoId(url) || 'force') : getYouTubeVideoId(url);
     
     if (youtubeId) {
       // YouTube video
@@ -144,7 +157,11 @@ function VideoPlayer() {
       }
       
       // Initialize new YouTube player
-      setTimeout(() => initYouTubePlayer(youtubeId), 100);
+      setTimeout(() => {
+        // If we used 'force' due to declaredType, extract again safely
+        const id = youtubeId === 'force' ? (getYouTubeVideoId(url) || '') : youtubeId;
+        initYouTubePlayer(id);
+      }, 100);
     } else {
       // HTML5 video (MP4, Google Drive, Seedr, etc.)
       setVideoType('html5');
@@ -283,11 +300,11 @@ function VideoPlayer() {
     const player = ytPlayerRef.current;
 
     try {
-      // Gentle initial sync for YT: only hard seek if >1.0s
+      // Gentle initial sync for YT: only hard seek if >1.2s
       const expectedTime = socketService.calculateExpectedTime(playbackState);
       const currentTime = player.getCurrentTime?.() || 0;
       const initialDrift = expectedTime - currentTime;
-      if (Math.abs(initialDrift) > 1.0) {
+      if (Math.abs(initialDrift) > 1.2) {
         console.log(`Initial YT sync: hard-correcting ${Math.abs(initialDrift).toFixed(2)}s drift`);
         player.seekTo(expectedTime, true);
         lastHardSeekAtRef.current = Date.now();
@@ -304,37 +321,30 @@ function VideoPlayer() {
         }
       }
 
-      // Adaptive drift correction for YT (every 1000ms)
+      // Conservative drift correction for YT (every 1500ms)
       driftCheckInterval.current = window.setInterval(() => {
         if (player.getPlayerState() === window.YT.PlayerState.PLAYING && playbackState.isPlaying) {
           const expectedTime = socketService.calculateExpectedTime(playbackState);
           const currentTime = player.getCurrentTime();
           const drift = expectedTime - currentTime; // positive = behind
 
+          // If buffer is low, avoid any seeks; let YT buffer up
+          const loadedFrac = player.getVideoLoadedFraction ? player.getVideoLoadedFraction() : 1;
+          if (loadedFrac < 0.2) {
+            setLocalTime(currentTime);
+            return;
+          }
+
           const now = Date.now();
-          if (Math.abs(drift) > 1.5 && now - lastHardSeekAtRef.current > 2000) {
+          if (Math.abs(drift) > 1.5 && now - lastHardSeekAtRef.current > 3000) {
             console.log(`YT hard resync: drift ${drift.toFixed(2)}s`);
             player.seekTo(expectedTime, true);
-            player.setPlaybackRate?.(1.0);
             lastHardSeekAtRef.current = now;
-          } else if (Math.abs(drift) > 0.3 && Math.abs(drift) <= 1.5) {
-            // Nudge playback rate using available rates
-            const rates: number[] = player.getAvailablePlaybackRates?.() || [0.5, 0.75, 1, 1.25, 1.5, 2];
-            const desired = drift > 0 ? 1.25 : 0.75;
-            const pick = rates.reduce((prev, curr) => Math.abs(curr - desired) < Math.abs(prev - desired) ? curr : prev, rates[0]);
-            if (player.getPlaybackRate && Math.abs(player.getPlaybackRate() - pick) > 0.01) {
-              player.setPlaybackRate?.(pick);
-            }
-          } else {
-            // Normalize
-            if (player.getPlaybackRate && Math.abs(player.getPlaybackRate() - 1.0) > 0.01) {
-              player.setPlaybackRate?.(1.0);
-            }
           }
 
           setLocalTime(currentTime);
         }
-      }, 1000);
+      }, 1500);
     } catch (err) {
       console.error('YouTube player error:', err);
     }
