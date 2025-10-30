@@ -419,6 +419,7 @@ export function setupSocketHandlers(io: SocketIOServer) {
     /**
      * Disconnect Handler
      * Clean up user from room and notify others
+     * Room persists even if host leaves - host can rejoin and reclaim host status
      */
     socket.on('disconnect', async () => {
       try {
@@ -434,17 +435,15 @@ export function setupSocketHandlers(io: SocketIOServer) {
             serverTime: Date.now(),
           });
 
-          // If the host left, close the room for everyone
-          if (socketUser.isHost) {
-            const room = await getRoom(roomId);
-            if (room) {
-              // Remove the room from memory
-              rooms.delete(roomId);
-              io.to(roomId).emit('room-closed', { message: 'Host left. Room closed.' });
-            }
-          }
-
+          // Room persists - don't delete even if host leaves
+          // Host can rejoin later and will be recognized by hostId
           logger.info(`User ${username} disconnected from room ${roomId}${socketUser.isHost ? ' (host)' : ''}`);
+          
+          // Check if room is now empty
+          const remainingUsers = Array.from(activeSockets.values()).filter(u => u.roomId === roomId);
+          if (remainingUsers.length === 0) {
+            logger.info(`Room ${roomId} is now empty but will persist for future joins`);
+          }
         }
       } catch (error) {
         logger.error('Error handling disconnect:', error);

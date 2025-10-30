@@ -25,7 +25,14 @@ This is a Watch-With-Friends web application for synchronized video watching wit
 - **Frontend**: React 18 + TypeScript + Vite + TailwindCSS + Zustand + Socket.IO Client
 - **Backend**: Node.js + TypeScript + Express + Socket.IO + Redis
 - **Real-time**: WebSocket (Socket.IO) for control + WebRTC for voice
-- **Synchronization**: Server-authoritative clock with drift correction
+- **Synchronization**: Server-authoritative clock with drift correction (300ms tolerance, 3s sync interval)
+
+### Room Persistence Rules
+- **Rooms never expire** as long as they exist in memory
+- **Host can leave and return** - their hostId is preserved, they regain host controls on rejoin
+- **Anyone can join** using the room code at any time
+- **No auto-close** when host disconnects - room stays active for other users
+- **Room only removed** when server restarts (in-memory storage)
 
 ### To Run the Application
 

@@ -150,12 +150,8 @@ function Room() {
           setError(err.message);
         });
 
-        // Host leaves → room closed
-        socketService.onRoomClosed(() => {
-          alert('Host left. Room is closed.');
-          clearRoom();
-          navigate('/');
-        });
+        // Room persists - no auto-close when host leaves
+        // Users can stay and wait for host to return
 
         setLoading(false);
       } catch (err: any) {
