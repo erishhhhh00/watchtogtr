@@ -11,12 +11,13 @@ import { logger } from '../utils/logger';
  * 2. When host sends play/pause/seek → server updates state with server timestamp
  * 3. Server broadcasts state to all clients with server time
  * 4. Clients calculate their local offset from server time
- * 5. Periodic sync every 5 seconds to correct drift (<500ms tolerance)
+ * 5. Periodic sync every 3 seconds to correct drift (<300ms tolerance)
  * 
  * Drift Correction:
  * - Clients track: localTime = serverTime + (Date.now() - lastSyncTime)
- * - If |clientTime - serverTime| > 500ms → resync
+ * - If |clientTime - serverTime| > 300ms → resync (immediate correction)
  * - Uses server timestamp as source of truth to prevent cumulative drift
+ * - Faster sync intervals (500ms checks, 3s server broadcast) for tighter sync
  */
 
 // In-memory storage (replaces Redis for development)
@@ -453,7 +454,7 @@ export function setupSocketHandlers(io: SocketIOServer) {
 
   /**
    * Periodic Sync Broadcast
-   * Every 5 seconds, send current state to all rooms for drift correction
+   * Every 3 seconds, send current state to all rooms for drift correction
    */
   setInterval(async () => {
     try {
@@ -481,7 +482,7 @@ export function setupSocketHandlers(io: SocketIOServer) {
     } catch (error) {
       logger.error('Error in periodic sync:', error);
     }
-  }, 5000);
+  }, 3000);
 }
 
 // Export room storage for routes

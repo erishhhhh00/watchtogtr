@@ -193,7 +193,16 @@ function VideoPlayer() {
 
     const video = videoRef.current;
 
-    // Apply playback state
+    // Immediate sync: Set video time to expected time
+    const expectedTime = socketService.calculateExpectedTime(playbackState);
+    const currentDrift = Math.abs(video.currentTime - expectedTime);
+    
+    if (currentDrift > 0.3) {
+      console.log(`Initial sync: correcting ${currentDrift.toFixed(2)}s drift`);
+      video.currentTime = expectedTime;
+    }
+
+    // Apply playback state immediately
     if (playbackState.isPlaying && video.paused) {
       video.play().catch((err) => {
         console.error('Play error:', err);
@@ -203,21 +212,22 @@ function VideoPlayer() {
       video.pause();
     }
 
-    // Drift correction
+    // Faster drift correction (every 500ms instead of 1000ms)
     driftCheckInterval.current = window.setInterval(() => {
       if (!video.paused && playbackState.isPlaying) {
         const expectedTime = socketService.calculateExpectedTime(playbackState);
         const currentTime = video.currentTime;
         const drift = Math.abs(expectedTime - currentTime);
 
-        if (drift > 0.5) {
+        // Tighter tolerance: 0.3s instead of 0.5s
+        if (drift > 0.3) {
           console.log(`Drift detected: ${drift.toFixed(2)}s, resyncing...`);
           video.currentTime = expectedTime;
         }
       }
 
       setLocalTime(video.currentTime);
-    }, 1000);
+    }, 500);
 
     return () => {
       if (driftCheckInterval.current) {
@@ -233,7 +243,17 @@ function VideoPlayer() {
     const player = ytPlayerRef.current;
 
     try {
-      // Apply playback state
+      // Immediate sync: Set video time to expected time
+      const expectedTime = socketService.calculateExpectedTime(playbackState);
+      const currentTime = player.getCurrentTime?.() || 0;
+      const currentDrift = Math.abs(currentTime - expectedTime);
+      
+      if (currentDrift > 0.3) {
+        console.log(`Initial sync: correcting ${currentDrift.toFixed(2)}s drift`);
+        player.seekTo(expectedTime, true);
+      }
+
+      // Apply playback state immediately
       if (playbackState.isPlaying) {
         if (player.getPlayerState() !== window.YT.PlayerState.PLAYING) {
           player.playVideo();
@@ -244,21 +264,22 @@ function VideoPlayer() {
         }
       }
 
-      // Drift correction
+      // Faster drift correction (every 500ms instead of 1000ms)
       driftCheckInterval.current = window.setInterval(() => {
         if (player.getPlayerState() === window.YT.PlayerState.PLAYING && playbackState.isPlaying) {
           const expectedTime = socketService.calculateExpectedTime(playbackState);
           const currentTime = player.getCurrentTime();
           const drift = Math.abs(expectedTime - currentTime);
 
-          if (drift > 0.5) {
+          // Tighter tolerance: 0.3s instead of 0.5s
+          if (drift > 0.3) {
             console.log(`Drift detected: ${drift.toFixed(2)}s, resyncing...`);
             player.seekTo(expectedTime, true);
           }
 
           setLocalTime(currentTime);
         }
-      }, 1000);
+      }, 500);
     } catch (err) {
       console.error('YouTube player error:', err);
     }
