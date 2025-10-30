@@ -23,7 +23,9 @@ const getYouTubeVideoId = (url: string): string | null => {
   return null;
 };
 
-// Helper to convert Google Drive link to direct stream URL
+const API_URL = (import.meta as any).env.VITE_API_URL || 'http://localhost:3001';
+
+// Helper to convert Google Drive link to proxied direct stream URL
 const getGoogleDriveDirectUrl = (url: string): string => {
   // Extract file ID from various Google Drive URL formats
   const patterns = [
@@ -36,7 +38,9 @@ const getGoogleDriveDirectUrl = (url: string): string => {
     const match = url.match(pattern);
     if (match) {
       const fileId = match[1];
-      return `https://drive.google.com/uc?export=download&id=${fileId}`;
+      const direct = `https://drive.google.com/uc?export=download&id=${fileId}`;
+      // Route through backend proxy to avoid CORS and support Range
+      return `${API_URL}/api/proxy/video?url=${encodeURIComponent(direct)}`;
     }
   }
   return url;
