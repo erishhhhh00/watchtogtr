@@ -69,6 +69,7 @@ function VideoPlayer() {
   const isBufferingRef = useRef<boolean>(false);
   const lastHardSeekAtRef = useRef<number>(0);
   const scheduleTimerRef = useRef<number>();
+  const driveTranscodeTriedRef = useRef<boolean>(false);
 
   const playbackState = room?.playbackState;
 
@@ -288,6 +289,7 @@ function VideoPlayer() {
       // Process URL based on source
       let processedUrl = url;
       if (url.includes('drive.google.com')) {
+        driveTranscodeTriedRef.current = false;
         processedUrl = getGoogleDriveDirectUrl(url);
       } else if (url.includes('seedr.cc')) {
         processedUrl = getSeedrDirectUrl(url);
@@ -309,6 +311,27 @@ function VideoPlayer() {
         
         const handleError = () => {
           setIsLoading(false);
+          // Fallback: if Google Drive and not yet transcoded, retry via backend transcode
+          if ((url.includes('drive.google.com') || url.includes('googleusercontent.com')) && !driveTranscodeTriedRef.current) {
+            driveTranscodeTriedRef.current = true;
+            // Build the original direct URL and then request transcode
+            let directUrl = url;
+            const patterns = [
+              /drive\.google\.com\/file\/d\/([^\/]+)/,
+              /drive\.google\.com\/open\?id=([^&]+)/,
+              /drive\.google\.com\/uc\?id=([^&]+)/,
+            ];
+            for (const p of patterns) {
+              const m = url.match(p);
+              if (m) { directUrl = `https://drive.google.com/uc?export=download&id=${m[1]}`; break; }
+            }
+            const transcodeUrl = `${API_URL}/api/proxy/transcode?url=${encodeURIComponent(directUrl)}`;
+            setError('');
+            setIsLoading(true);
+            video.src = transcodeUrl;
+            video.load();
+            return;
+          }
           setError('Failed to load video. Use a direct MP4/WebM link, or an HLS .m3u8 stream.');
         };
         const handleWaiting = () => {
