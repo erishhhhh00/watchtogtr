@@ -48,7 +48,9 @@ export const authService = {
 
 export const roomService = {
   async createRoom(name: string, hostId: string, maxParticipants: number = 10): Promise<{ room: Room }> {
+    console.log(`[API] Creating room: name="${name}", hostId="${hostId}"`);
     const response = await api.post('/rooms', { name, hostId, maxParticipants });
+    console.log('[API] Room created:', response.data.room);
     return response.data;
   },
 
@@ -58,7 +60,9 @@ export const roomService = {
   },
 
   async getRoomByCode(code: string): Promise<{ room: Room }> {
+    console.log(`[API] Looking up room by code: "${code}" at ${API_URL}/api/rooms/code/${code}`);
     const response = await api.get(`/rooms/code/${code}`);
+    console.log('[API] Room found:', response.data);
     return response.data;
   },
 

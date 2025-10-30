@@ -5,6 +5,7 @@ import { AppError } from '../middleware/errorHandler';
 import { Room } from '../types';
 import { rooms } from '../socket';
 import Joi from 'joi';
+import { logger } from '../utils/logger';
 
 export const roomRouter = Router();
 
@@ -53,6 +54,7 @@ roomRouter.post('/', roomCreationLimiter, async (req, res, next) => {
     // Store room in memory
     rooms.set(roomId, room);
 
+    logger.info(`Room created: id=${roomId}, code=${roomCode}, host=${hostId}`);
     res.status(201).json({ room });
   } catch (err) {
     next(err);
@@ -64,9 +66,13 @@ roomRouter.get('/code/:code', async (req, res, next) => {
   try {
     const { code } = req.params;
 
+    logger.info(`Looking up room by code: "${code}"`);
+    logger.info(`Total rooms in memory: ${rooms.size}`);
+
     // Find room by code
     let foundRoom = null;
     for (const [, room] of rooms.entries()) {
+      logger.info(`Checking room ${room.id} with code "${room.code}"`);
       if (room.code === code) {
         foundRoom = room;
         break;
@@ -74,9 +80,11 @@ roomRouter.get('/code/:code', async (req, res, next) => {
     }
 
     if (!foundRoom) {
+      logger.warn(`Room not found for code: "${code}"`);
       throw new AppError('Room not found with this code', 404);
     }
 
+    logger.info(`Found room ${foundRoom.id} for code "${code}"`);
     res.json({ room: foundRoom });
   } catch (err) {
     next(err);

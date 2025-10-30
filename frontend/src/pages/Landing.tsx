@@ -114,12 +114,16 @@ function Landing() {
       
       // If 5-digit code, get room by code
       if (/^\d{5}$/.test(raw)) {
+        console.log(`[Landing] Looking up 5-digit code: "${raw}"`);
         const { room } = await roomService.getRoomByCode(raw);
+        console.log('[Landing] Room resolved:', room);
         roomId = room.id;
       }
       
+      console.log(`[Landing] Navigating to room: ${roomId}`);
       navigate(`/room/${roomId}`);
     } catch (err: any) {
+      console.error('[Landing] Join room error:', err);
       setError(err.response?.data?.message || 'Room not found');
     } finally {
       setLoading(false);
