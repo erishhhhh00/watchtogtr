@@ -19,11 +19,26 @@ function Room() {
   const participants = useRoomStore((state) => state.participants);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [isReconnecting, setIsReconnecting] = useState(false);
   const socketConnected = useRef(false);
+  const isInitialized = useRef(false);
+
+  // Store room session in sessionStorage for refresh persistence
+  useEffect(() => {
+    if (roomId && user) {
+      sessionStorage.setItem('currentRoomId', roomId);
+      sessionStorage.setItem('currentUserId', user.id);
+      sessionStorage.setItem('currentUsername', user.username);
+    }
+  }, [roomId, user]);
 
   useEffect(() => {
     const init = async () => {
       try {
+        // Prevent duplicate initialization
+        if (isInitialized.current) return;
+        isInitialized.current = true;
+
         if (!roomId) {
           console.error('Missing roomId');
           setError('Room ID missing');
@@ -62,9 +77,26 @@ function Room() {
         }
         setIsHost(roomData.hostId === currentUser.id);
         
-        // Connect socket
+        // Connect socket with auto-rejoin on reconnection
         if (!socketConnected.current) {
-          socketService.connect();
+          const socket = socketService.connect();
+          
+          // Listen for reconnection events
+          socket.on('disconnect', () => {
+            setIsReconnecting(true);
+          });
+          
+          socket.on('connect', () => {
+            setIsReconnecting(false);
+          });
+          
+          // Set up auto-rejoin callback for reconnections
+          socketService.setReconnectCallback(() => {
+            console.log('🔄 Auto-rejoining room after reconnection...');
+            setIsReconnecting(false);
+            socketService.joinRoom(roomId, currentUser.id, currentUser.username);
+          });
+          
           socketService.joinRoom(roomId, currentUser.id, currentUser.username);
           socketConnected.current = true;
         }
@@ -137,15 +169,22 @@ function Room() {
     init();
 
     return () => {
-      if (socketConnected.current) {
-        socketService.disconnect();
-        socketConnected.current = false;
-      }
-      clearRoom();
+      // DON'T disconnect socket on unmount - keep connection alive
+      // Only disconnect when user explicitly leaves
+      // This allows refresh and navigation without losing connection
     };
   }, [roomId, user]);
 
   const handleLeaveRoom = () => {
+    // Clean disconnect only when user explicitly leaves
+    if (socketConnected.current) {
+      socketService.disconnect();
+      socketConnected.current = false;
+    }
+    sessionStorage.removeItem('currentRoomId');
+    sessionStorage.removeItem('currentUserId');
+    sessionStorage.removeItem('currentUsername');
+    clearRoom();
     navigate('/');
   };
 
@@ -176,6 +215,16 @@ function Room() {
 
   return (
     <div className="min-h-screen bg-dark flex flex-col">
+      {/* Reconnection Banner */}
+      {isReconnecting && (
+        <div className="bg-yellow-500/20 border-b border-yellow-500/50 px-4 py-2">
+          <div className="max-w-7xl mx-auto flex items-center justify-center gap-2 text-yellow-300">
+            <div className="animate-spin rounded-full h-4 w-4 border-2 border-yellow-300 border-t-transparent"></div>
+            <span className="text-sm font-medium">🔄 Reconnecting... Trying to restore connection...</span>
+          </div>
+        </div>
+      )}
+      
       {/* Header */}
       <div className="bg-darker border-b border-pink-500/30 px-4 py-3">
         <div className="max-w-7xl mx-auto flex items-center justify-between">

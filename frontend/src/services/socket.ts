@@ -14,6 +14,7 @@ const WS_URL =
 class SocketService {
   private socket: Socket | null = null;
   private serverTimeOffset: number = 0; // Client time - Server time
+  private reconnectCallback: (() => void) | null = null;
 
   connect(): Socket {
     if (this.socket?.connected) {
@@ -25,14 +26,39 @@ class SocketService {
       transports: ['websocket', 'polling'],
       autoConnect: true,
       withCredentials: true,
+      // Reconnection settings for network issues
+      reconnection: true,
+      reconnectionAttempts: Infinity, // Keep trying until network comes back
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      timeout: 20000,
     });
 
     this.socket.on('connect', () => {
-      console.log('Socket connected:', this.socket?.id);
+      console.log('✅ Socket connected:', this.socket?.id);
+      // Auto-rejoin room after reconnection
+      if (this.reconnectCallback) {
+        console.log('🔄 Rejoining room after reconnection...');
+        this.reconnectCallback();
+      }
     });
 
-    this.socket.on('disconnect', () => {
-      console.log('Socket disconnected');
+    this.socket.on('disconnect', (reason) => {
+      console.log('❌ Socket disconnected:', reason);
+      if (reason === 'io server disconnect') {
+        // Server kicked us, reconnect manually
+        this.socket?.connect();
+      }
+      // For 'io client disconnect', don't auto-reconnect (user left intentionally)
+      // For 'transport close' or 'ping timeout', socket.io will auto-reconnect
+    });
+
+    this.socket.on('reconnect_attempt', (attempt) => {
+      console.log(`🔄 Reconnection attempt ${attempt}...`);
+    });
+
+    this.socket.on('reconnect_failed', () => {
+      console.error('❌ Reconnection failed after all attempts');
     });
 
     this.socket.on('connect_error', (err) => {
@@ -40,6 +66,11 @@ class SocketService {
     });
 
     return this.socket;
+  }
+
+  // Set callback to rejoin room after reconnection
+  setReconnectCallback(callback: () => void) {
+    this.reconnectCallback = callback;
   }
 
   disconnect() {
