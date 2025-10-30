@@ -99,23 +99,29 @@ function VideoPlayer() {
                 // Improve chance of autoplay on guests
                 ytPlayerRef.current.mute();
               }
-              // If we have a valid videoId, play normally, else fall back to URL-based load
-              if (videoId) {
-                if (playbackState?.currentTime) {
-                  ytPlayerRef.current.seekTo(playbackState.currentTime, true);
-                }
-                if (playbackState?.isPlaying) {
-                  ytPlayerRef.current.playVideo();
+              const start = playbackState?.currentTime || 0;
+              const shouldPlay = !!playbackState?.isPlaying;
+              const parsedId = getYouTubeVideoId(playbackState?.url || '') || videoId;
+              if (parsedId) {
+                // Load by ID to be safe, then play/pause based on state
+                ytPlayerRef.current.loadVideoById({ videoId: parsedId, startSeconds: start, suggestedQuality: 'auto' });
+                if (!shouldPlay) {
+                  ytPlayerRef.current.pauseVideo();
                 }
               } else if (playbackState?.url) {
-                const start = playbackState.currentTime || 0;
-                // Use loadVideoByUrl for unparsed share/short URLs
-                ytPlayerRef.current.loadVideoByUrl(playbackState.url, start);
+                // Correct API signature: use object for mediaContentUrl
+                ytPlayerRef.current.loadVideoByUrl({ mediaContentUrl: playbackState.url, startSeconds: start, suggestedQuality: 'auto' });
+                if (!shouldPlay) {
+                  ytPlayerRef.current.pauseVideo();
+                }
               }
             } catch {}
           },
           onStateChange: (event: any) => {
             if (event.data === window.YT.PlayerState.PLAYING) {
+              setIsLoading(false);
+            }
+            if (event.data === window.YT.PlayerState.PAUSED || event.data === window.YT.PlayerState.CUED) {
               setIsLoading(false);
             }
             if (isHost) {
