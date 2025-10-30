@@ -16,10 +16,23 @@ dotenv.config();
 const app = express();
 const httpServer = createServer(app);
 
+// Helpers
+function getAllowedOrigins(): string[] {
+  const raw = process.env.CORS_ORIGIN || 'http://localhost:5173';
+  return raw.split(',').map((s) => s.trim()).filter(Boolean);
+}
+
 // Middleware
 app.use(helmet());
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  origin: (origin, callback) => {
+    const allowed = getAllowedOrigins();
+    // Allow non-browser requests (no origin) and allowed origins
+    if (!origin || allowed.includes(origin)) {
+      return callback(null, true);
+    }
+    callback(new Error('Not allowed by CORS'));
+  },
   credentials: true,
 }));
 app.use(express.json());
@@ -39,7 +52,13 @@ app.use(errorHandler);
 // Socket.IO setup
 const io = new SocketIOServer(httpServer, {
   cors: {
-    origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+    origin: (origin, callback) => {
+      const allowed = getAllowedOrigins();
+      if (!origin || allowed.includes(origin)) {
+        return callback(null, true);
+      }
+      callback(new Error('Not allowed by CORS'));
+    },
     credentials: true,
   },
 });
