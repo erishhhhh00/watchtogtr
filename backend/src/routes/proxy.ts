@@ -3,7 +3,7 @@ import http from 'http';
 import https from 'https';
 import { URL } from 'url';
 import { spawn } from 'child_process';
-import ffmpegPath from 'ffmpeg-static';
+const ffmpegPath = require('ffmpeg-static');
 
 export const proxyRouter = Router();
 
@@ -60,6 +60,52 @@ proxyRouter.get('/video', (req, res): void => {
   };
 
   const upstream = client.request(target, options, (upstreamRes) => {
+    // If Google Drive returns an HTML warning page (for large files), capture and follow the confirm link
+    const isDrive = /drive\.google\.com$/i.test(target.hostname) || /googleusercontent\.com$/i.test(target.hostname);
+
+    if (isDrive && (upstreamRes.headers['content-type'] || '').includes('text/html')) {
+      // Buffer small HTML response to inspect for confirm token
+      const chunks: Buffer[] = [];
+      upstreamRes.on('data', (c: Buffer) => chunks.push(c));
+      upstreamRes.on('end', () => {
+        const body = Buffer.concat(chunks).toString('utf8');
+        // Try to find a confirm token in the HTML (pattern appears in Drive interstitial)
+        const m = body.match(/confirm=([0-9A-Za-z_\-]+)/i) || body.match(/confirm=([0-9A-Za-z_\-]+)&/i);
+        if (m && m[1]) {
+          const token = m[1];
+          // Reconstruct URL with confirm token
+          const confirmed = new URL(target.toString());
+          confirmed.searchParams.set('confirm', token);
+          // Re-request the confirmed URL
+          const client2 = confirmed.protocol === 'http:' ? http : https;
+          const req2 = client2.request(confirmed, options, (r2) => {
+            const passthroughHeaders: Record<string, string | number | readonly string[] | undefined> = {
+              'Content-Type': r2.headers['content-type'],
+              'Content-Length': r2.headers['content-length'],
+              'Content-Range': r2.headers['content-range'],
+              'Accept-Ranges': r2.headers['accept-ranges'] || 'bytes',
+              'Cache-Control': r2.headers['cache-control'] || 'no-cache',
+            };
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.setHeader('Access-Control-Expose-Headers', 'Content-Length,Content-Range,Accept-Ranges');
+            res.status(r2.statusCode || 200);
+            Object.entries(passthroughHeaders).forEach(([k, v]) => { if (typeof v !== 'undefined') res.setHeader(k, v as any); });
+            r2.pipe(res);
+          });
+          req2.on('error', (err) => { if (!res.headersSent) res.status(502).json({ message: 'Upstream fetch failed', error: String(err) }); else try { res.end(); } catch {} });
+          req2.end();
+          return;
+        }
+
+        // If no confirm token, fall back to returning the original HTML (likely an error)
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Expose-Headers', 'Content-Length,Content-Range,Accept-Ranges');
+        res.status(upstreamRes.statusCode || 200).send(body);
+      });
+      upstreamRes.on('error', (err) => { if (!res.headersSent) res.status(502).json({ message: 'Upstream fetch failed', error: String(err) }); });
+      return;
+    }
+
     // Pass through relevant headers
     const passthroughHeaders: Record<string, string | number | readonly string[] | undefined> = {
       'Content-Type': upstreamRes.headers['content-type'],
