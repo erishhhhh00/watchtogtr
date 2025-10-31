@@ -9,7 +9,7 @@ const ffmpegPath = require('ffmpeg-static');
 export const proxyRouter = Router();
 
 // Health check endpoint for FFmpeg
-proxyRouter.get('/health', (req, res): void => {
+proxyRouter.get('/health', (_req, res): void => {
   const ffmpegAvailable = ffmpegPath && existsSync(ffmpegPath);
   res.json({
     ffmpeg: {
