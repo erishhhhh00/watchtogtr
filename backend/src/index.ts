@@ -102,14 +102,16 @@ const io = new SocketIOServer(httpServer, {
 setupSocketHandlers(io);
 
 const PORT = process.env.PORT || 3001;
+const HOST = '0.0.0.0'; // bind to all interfaces for VPS/public access
 
 async function startServer() {
   try {
     // Initialize room storage (Redis if REDIS_URL provided; falls back to memory)
     await initRoomStore(process.env.REDIS_URL);
     
-    httpServer.listen(PORT, () => {
+    httpServer.listen(Number(PORT), HOST, () => {
       logger.info(`Server running on port ${PORT}`);
+      logger.info(`Listening host: ${HOST}`);
       logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
     });
   } catch (error) {
