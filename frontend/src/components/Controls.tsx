@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useRoomStore } from '../stores/roomStore';
 import { socketService } from '../services/socket';
+import WebBrowser from './WebBrowser';
 
 // Infer video type from URL when possible
 function detectTypeFromUrl(url: string): 'mp4' | 'youtube' | 'hls' {
@@ -18,6 +19,7 @@ function detectTypeFromUrl(url: string): 'mp4' | 'youtube' | 'hls' {
 function Controls() {
   const { room, isHost } = useRoomStore();
   const [showUrlInput, setShowUrlInput] = useState(false);
+  const [showWebBrowser, setShowWebBrowser] = useState(false);
   const [videoUrl, setVideoUrl] = useState('');
   const [videoType, setVideoType] = useState<'mp4' | 'youtube' | 'hls'>('mp4');
 
@@ -57,7 +59,14 @@ function Controls() {
             className="w-full bg-primary hover:bg-primary/90 text-white font-medium py-3 rounded-lg flex items-center justify-center gap-2"
           >
             <span>📹</span>
-            <span>Add Video / Browse Links</span>
+            <span>Add Video URL</span>
+          </button>
+          <button
+            onClick={() => setShowWebBrowser(true)}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-lg flex items-center justify-center gap-2"
+          >
+            <span>🌐</span>
+            <span>Browse Any Website</span>
           </button>
           <p className="text-xs text-gray-500 text-center">
             Supports: YouTube, Drive, Vimeo, Mega, Streamable + Any direct video link
@@ -150,6 +159,19 @@ function Controls() {
           💡 Tip: Use the video player controls to play/pause and seek. All participants will stay synchronized.
         </p>
       </div>
+
+      {/* Web Browser Modal */}
+      {showWebBrowser && (
+        <WebBrowser
+          onVideoUrlFound={(url) => {
+            setVideoUrl(url);
+            setShowUrlInput(true);
+            const inferred = detectTypeFromUrl(url);
+            setVideoType(inferred);
+          }}
+          onClose={() => setShowWebBrowser(false)}
+        />
+      )}
     </div>
   );
 }
