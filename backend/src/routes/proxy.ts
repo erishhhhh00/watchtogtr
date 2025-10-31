@@ -171,72 +171,137 @@ proxyRouter.get('/transcode', (req, res): void => {
   console.log('[Transcode] Starting transcode for:', raw);
   console.log('[Transcode] FFmpeg path:', ffmpegPath);
 
-  // Build FFmpeg args. First attempt stream-copy to MP4; if it fails, user can retry or we could later add a fallback.
-  const headers = [
-    `User-Agent: Mozilla/5.0`,
-    `Referer: https://drive.google.com/`,
-    `Accept: */*`,
-  ];
+  // For Google Drive, first check if we need a confirm token
+  const isDrive = /drive\.google\.com|googleusercontent\.com/i.test(target.hostname);
+  
+  if (isDrive && raw.includes('export=download')) {
+    // Try to fetch and check for confirm token
+    const client = target.protocol === 'http:' ? http : https;
+    const checkReq = client.request(target, { method: 'HEAD' }, (checkRes) => {
+      const contentType = checkRes.headers['content-type'] || '';
+      
+      // If HTML response, we likely need a confirm token
+      if (contentType.includes('text/html')) {
+        console.log('[Transcode] Drive returned HTML, fetching confirm token...');
+        
+        const fetchReq = client.request(target, { method: 'GET' }, (fetchRes) => {
+          const chunks: Buffer[] = [];
+          fetchRes.on('data', (c: Buffer) => chunks.push(c));
+          fetchRes.on('end', () => {
+            const body = Buffer.concat(chunks).toString('utf8');
+            const m = body.match(/confirm=([0-9A-Za-z_\-]+)/i);
+            
+            if (m && m[1]) {
+              const confirmed = new URL(raw);
+              confirmed.searchParams.set('confirm', m[1]);
+              console.log('[Transcode] Found confirm token, restarting with:', confirmed.toString());
+              
+              // Restart transcode with confirmed URL
+              startTranscode(confirmed.toString(), res);
+              return;
+            }
+            
+            console.error('[Transcode] No confirm token found, proceeding anyway');
+            startTranscode(raw, res);
+          });
+        });
+        
+        fetchReq.on('error', (err) => {
+          console.error('[Transcode] Error fetching confirm token:', err);
+          startTranscode(raw, res);
+        });
+        
+        fetchReq.end();
+        return;
+      }
+      
+      // Direct video file, proceed
+      startTranscode(raw, res);
+    });
+    
+    checkReq.on('error', (err) => {
+      console.error('[Transcode] HEAD request error:', err);
+      startTranscode(raw, res);
+    });
+    
+    checkReq.end();
+    return;
+  }
+  
+  // Non-Drive or already has token
+  startTranscode(raw, res);
+  
+  function startTranscode(videoUrl: string, response: any) {
+    console.log('[Transcode] Starting FFmpeg with URL:', videoUrl);
+    
+    const headers = [
+      `User-Agent: Mozilla/5.0`,
+      `Referer: https://drive.google.com/`,
+      `Accept: */*`,
+    ];
 
-  const inputArgs = [
-    '-hide_banner', '-loglevel', 'error',
-    '-headers', headers.map(h => h + '\r\n').join(''),
-    '-reconnect', '1',
-    '-reconnect_streamed', '1',
-    '-reconnect_on_network_error', '1',
-    '-i', raw,
-  ];
+    const inputArgs = [
+      '-hide_banner', '-loglevel', 'warning',
+      '-headers', headers.map(h => h + '\r\n').join(''),
+      '-reconnect', '1',
+      '-reconnect_streamed', '1',
+      '-reconnect_on_network_error', '1',
+      '-i', videoUrl,
+    ];
 
-  const outputArgs = [
-    // Re-encode to H.264/AAC for universal browser support (slower but reliable for MKV)
-    '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28',
-    '-c:a', 'aac', '-b:a', '128k', '-ar', '44100',
-    // Make it streamable fragmented MP4
-    '-f', 'mp4', '-movflags', 'frag_keyframe+empty_moov+faststart',
-    '-reset_timestamps', '1',
-    'pipe:1',
-  ];
+    const outputArgs = [
+      // Re-encode to H.264/AAC for universal browser support
+      '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28',
+      '-c:a', 'aac', '-b:a', '128k', '-ar', '44100',
+      // Make it streamable fragmented MP4
+      '-f', 'mp4', '-movflags', 'frag_keyframe+empty_moov+faststart',
+      '-reset_timestamps', '1',
+      'pipe:1',
+    ];
 
-  res.setHeader('Content-Type', 'video/mp4');
-  res.setHeader('Cache-Control', 'no-store');
-  res.setHeader('Access-Control-Allow-Origin', '*');
+    response.setHeader('Content-Type', 'video/mp4');
+    response.setHeader('Cache-Control', 'no-store');
+    response.setHeader('Access-Control-Allow-Origin', '*');
 
-  const ff = spawn(ffmpegPath as string, [...inputArgs, ...outputArgs]);
+    const ff = spawn(ffmpegPath as string, [...inputArgs, ...outputArgs]);
 
-  ff.stdout.pipe(res);
+    ff.stdout.pipe(response);
 
-  let errorMsg = '';
-  ff.stderr.on('data', (d) => { 
-    errorMsg += d.toString();
-    console.error('[Transcode] FFmpeg stderr:', d.toString().slice(0, 200));
-  });
+    let errorMsg = '';
+    ff.stderr.on('data', (d) => { 
+      errorMsg += d.toString();
+      console.error('[Transcode] FFmpeg stderr:', d.toString().slice(0, 200));
+    });
 
-  const cleanup = () => {
-    try { ff.kill('SIGKILL'); } catch {}
-  };
-  res.on('close', () => {
-    console.log('[Transcode] Client disconnected');
-    cleanup();
-  });
-  res.on('error', (err) => {
-    console.error('[Transcode] Response error:', err);
-    cleanup();
-  });
+    const cleanup = () => {
+      try { ff.kill('SIGKILL'); } catch {}
+    };
+    
+    response.on('close', () => {
+      console.log('[Transcode] Client disconnected');
+      cleanup();
+    });
+    
+    response.on('error', (err: any) => {
+      console.error('[Transcode] Response error:', err);
+      cleanup();
+    });
 
-  ff.on('error', (err) => {
-    console.error('[Transcode] FFmpeg spawn error:', err);
-    if (!res.headersSent) {
-      res.status(500).json({ message: 'FFmpeg failed to start', error: String(err) });
-    }
-    cleanup();
-  });
+    ff.on('error', (err) => {
+      console.error('[Transcode] FFmpeg spawn error:', err);
+      if (!response.headersSent) {
+        response.status(500).json({ message: 'FFmpeg failed to start', error: String(err) });
+      }
+      cleanup();
+    });
 
-  ff.on('close', (code) => {
-    console.log('[Transcode] FFmpeg exited with code:', code);
-    if (code !== 0 && !res.headersSent) {
-      console.error('[Transcode] Error details:', errorMsg.slice(0, 1000));
-      res.status(502).json({ message: 'Transcode failed', detail: errorMsg.slice(0, 1000) });
-    }
-    try { res.end(); } catch {}
-  });
+    ff.on('close', (code) => {
+      console.log('[Transcode] FFmpeg exited with code:', code);
+      if (code !== 0 && !response.headersSent) {
+        console.error('[Transcode] Error details:', errorMsg.slice(0, 1000));
+        response.status(502).json({ message: 'Transcode failed', detail: errorMsg.slice(0, 1000) });
+      }
+      try { response.end(); } catch {}
+    });
+  }
 });
