@@ -1,57 +1,35 @@
 import { createClient, RedisClientType } from 'redis';
 import { logger } from './logger';
 
-let redisClient: RedisClientType | null = null;
+let client: RedisClientType | null = null;
 
-export async function connectRedis(): Promise<RedisClientType | null> {
-  // Only use Redis in production
-  if (process.env.NODE_ENV !== 'production' || !process.env.REDIS_URL) {
-    logger.info('Redis disabled - using in-memory storage');
-    return null;
-  }
-
+/**
+ * Lazy Redis client initializer used by modules that want a shared client.
+ * Returns null if no URL is provided.
+ */
+export async function getRedis(url?: string): Promise<RedisClientType | null> {
+  if (client && (client as any).isOpen) return client;
+  if (!url) return null;
   try {
-    const client = createClient({
-      url: process.env.REDIS_URL,
-      socket: {
-        reconnectStrategy: (retries) => {
-          if (retries > 10) {
-            logger.error('Redis connection failed after 10 retries');
-            return new Error('Redis connection failed');
-          }
-          return retries * 500; // Exponential backoff
-        },
-      },
-    });
-
-    client.on('error', (err) => {
-      logger.error('Redis Client Error:', err);
-    });
-
-    client.on('connect', () => {
-      logger.info('✅ Redis connected successfully');
-    });
-
-    client.on('reconnecting', () => {
-      logger.warn('⚠️ Redis reconnecting...');
-    });
-
-    await client.connect();
-    redisClient = client;
+    const c = createClient({ url });
+    c.on('error', (err) => logger.error('Redis client error:', err));
+    await c.connect();
+    client = c as unknown as RedisClientType;
+    logger.info('utils/redis: connected');
     return client;
-  } catch (error) {
-    logger.error('Failed to connect to Redis:', error);
+  } catch (err) {
+    logger.warn('utils/redis: failed to connect, returning null');
     return null;
   }
 }
 
-export function getRedisClient(): RedisClientType | null {
-  return redisClient;
+export function getRedisSync(): RedisClientType | null {
+  return client;
 }
 
 export async function disconnectRedis(): Promise<void> {
-  if (redisClient) {
-    await redisClient.quit();
-    logger.info('Redis disconnected');
+  if (client) {
+    try { await client.disconnect(); } catch {}
+    client = null;
   }
 }
