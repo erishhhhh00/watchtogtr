@@ -51,12 +51,18 @@ function Controls() {
       </h3>
       
       {!showUrlInput ? (
-        <button
-          onClick={() => setShowUrlInput(true)}
-          className="w-full bg-primary hover:bg-primary/90 text-white font-medium py-2 rounded-lg"
-        >
-          + Add Video URL
-        </button>
+        <div className="space-y-2">
+          <button
+            onClick={() => setShowUrlInput(true)}
+            className="w-full bg-primary hover:bg-primary/90 text-white font-medium py-3 rounded-lg flex items-center justify-center gap-2"
+          >
+            <span>📹</span>
+            <span>Add Video / Browse Links</span>
+          </button>
+          <p className="text-xs text-gray-500 text-center">
+            Support: YouTube, Google Drive, HLS, Direct MP4/WebM
+          </p>
+        </div>
       ) : (
         <form onSubmit={handleAddVideo} className="space-y-3">
           <div>
@@ -78,26 +84,41 @@ function Controls() {
             <label className="block text-sm font-medium text-gray-300 mb-2">
               Video URL
             </label>
-            <input
-              type="text"
-              value={videoUrl}
-              onChange={(e) => {
-                const val = e.target.value;
-                setVideoUrl(val);
-                // Update type based on URL, but keep user's explicit selection if they change it after
-                const inferred = detectTypeFromUrl(val);
-                setVideoType(inferred);
-              }}
-              placeholder="YouTube, HLS (.m3u8), Google Drive, Seedr, or direct MP4/WebM link"
-              className="w-full px-3 py-2 bg-dark border border-gray-700 rounded-lg text-white focus:outline-none focus:border-primary"
-              required
-            />
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={videoUrl}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setVideoUrl(val);
+                  // Update type based on URL, but keep user's explicit selection if they change it after
+                  const inferred = detectTypeFromUrl(val);
+                  setVideoType(inferred);
+                }}
+                placeholder="Paste YouTube, Google Drive, or direct video link"
+                className="flex-1 px-3 py-2 bg-dark border border-gray-700 rounded-lg text-white focus:outline-none focus:border-primary"
+                required
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  const driveUrl = prompt('📁 Paste your Google Drive share link here:');
+                  if (driveUrl) {
+                    setVideoUrl(driveUrl);
+                    setVideoType('mp4');
+                  }
+                }}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium whitespace-nowrap"
+                title="Browse Google Drive"
+              >
+                📁 Drive
+              </button>
+            </div>
             <div className="mt-2 text-xs text-gray-400 space-y-1">
-              <p>📺 YouTube: https://youtube.com/watch?v=...</p>
-              <p>📡 HLS: https://example.com/stream/index.m3u8</p>
-              <p>📁 Google Drive: https://drive.google.com/file/d/...</p>
-              <p>🌱 Seedr: https://www.seedr.cc/...</p>
-              <p>🎬 Direct: https://example.com/video.mp4 (or .webm)</p>
+              <p>📺 <strong>YouTube:</strong> https://youtube.com/watch?v=...</p>
+              <p>� <strong>Google Drive:</strong> Right-click file → Get link → Paste here</p>
+              <p>📡 <strong>HLS Stream:</strong> https://example.com/stream.m3u8</p>
+              <p>🎬 <strong>Direct Link:</strong> https://example.com/video.mp4</p>
             </div>
           </div>
 
