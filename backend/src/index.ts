@@ -24,8 +24,23 @@ function isDev() {
 
 function getAllowedOrigins(): string[] {
   // Include common localhost variants by default for dev
-  const raw = process.env.CORS_ORIGIN || 'http://localhost:5173,http://127.0.0.1:5173';
+  const raw = process.env.CORS_ORIGIN || 'http://localhost:5173,http://127.0.0.1:5173,https://watchtogtr-frontend.vercel.app';
   return raw.split(',').map((s) => s.trim()).filter(Boolean);
+}
+
+function isRegexAllowed(origin?: string): boolean {
+  if (!origin) return true; // non-browser tools
+  try {
+    const u = new URL(origin);
+    const host = u.hostname;
+    // Permit common hosted frontends by default in prod if env not set properly
+    // - Any *.vercel.app (frontend)
+    // - Any *.onrender.com (useful for preview/frontends hosted on Render)
+    const allowRegexes = [/\.vercel\.app$/i, /\.onrender\.com$/i];
+    return allowRegexes.some((re) => re.test(host));
+  } catch {
+    return false;
+  }
 }
 
 // Middleware
@@ -38,7 +53,7 @@ app.use(cors({
     }
     const allowed = getAllowedOrigins();
     // Allow non-browser requests (no origin) and allowed origins
-    if (!origin || allowed.includes(origin)) {
+    if (!origin || allowed.includes(origin) || isRegexAllowed(origin)) {
       return callback(null, true);
     }
     callback(new Error('Not allowed by CORS'));
@@ -68,7 +83,7 @@ const io = new SocketIOServer(httpServer, {
         return callback(null, true);
       }
       const allowed = getAllowedOrigins();
-      if (!origin || allowed.includes(origin)) {
+      if (!origin || allowed.includes(origin) || isRegexAllowed(origin)) {
         return callback(null, true);
       }
       callback(new Error('Not allowed by CORS'));
