@@ -311,6 +311,7 @@ function VideoPlayer() {
         
         const handleError = () => {
           setIsLoading(false);
+          console.error('[VideoPlayer] Video error:', video.error);
           // Fallback: if Google Drive and not yet transcoded, retry via backend transcode
           if ((url.includes('drive.google.com') || url.includes('googleusercontent.com')) && !driveTranscodeTriedRef.current) {
             driveTranscodeTriedRef.current = true;
@@ -327,13 +328,17 @@ function VideoPlayer() {
             }
             const transcodeUrl = `${API_URL}/api/proxy/transcode?url=${encodeURIComponent(directUrl)}`;
             console.log('[VideoPlayer] Direct playback failed, retrying via transcode:', transcodeUrl);
-            setError('Converting video for playback...');
+            setError('🔄 Converting MKV to browser-compatible format...');
             setIsLoading(true);
             video.src = transcodeUrl;
             video.load();
             return;
           }
-          setError('Failed to load video. Google Drive MKV may be too large or blocked. Try a direct MP4/WebM link, or an HLS .m3u8 stream.');
+          // Show specific error based on video error code
+          const errorCode = video.error?.code;
+          const errorMsg = video.error?.message || 'Unknown error';
+          console.error('[VideoPlayer] Final error - Code:', errorCode, 'Message:', errorMsg);
+          setError(`⚠️ Failed to load video. ${url.includes('.m3u8') ? 'HLS stream error.' : 'Try a different video format or check the URL.'}`);
         };
         const handleWaiting = () => {
           isBufferingRef.current = true;

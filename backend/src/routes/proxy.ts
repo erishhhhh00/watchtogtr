@@ -3,9 +3,22 @@ import http from 'http';
 import https from 'https';
 import { URL } from 'url';
 import { spawn } from 'child_process';
+import { existsSync } from 'fs';
 const ffmpegPath = require('ffmpeg-static');
 
 export const proxyRouter = Router();
+
+// Health check endpoint for FFmpeg
+proxyRouter.get('/health', (req, res): void => {
+  const ffmpegAvailable = ffmpegPath && existsSync(ffmpegPath);
+  res.json({
+    ffmpeg: {
+      available: ffmpegAvailable,
+      path: ffmpegPath || 'not found',
+    },
+    status: ffmpegAvailable ? 'ok' : 'error',
+  });
+});
 
 // Very small allowlist to avoid open proxy misuse
 const ALLOWED_HOSTS = new Set<string>([
@@ -149,7 +162,14 @@ proxyRouter.get('/transcode', (req, res): void => {
   if (!/^https?:$/i.test(target.protocol)) { res.status(400).json({ message: 'Only http/https URLs are allowed' }); return; }
   if (!isAllowed(target)) { res.status(403).json({ message: 'URL host not allowed by proxy' }); return; }
 
-  if (!ffmpegPath) { res.status(500).json({ message: 'FFmpeg binary not available on server' }); return; }
+  if (!ffmpegPath) { 
+    console.error('[Transcode] FFmpeg not available');
+    res.status(500).json({ message: 'FFmpeg binary not available on server' }); 
+    return; 
+  }
+
+  console.log('[Transcode] Starting transcode for:', raw);
+  console.log('[Transcode] FFmpeg path:', ffmpegPath);
 
   // Build FFmpeg args. First attempt stream-copy to MP4; if it fails, user can retry or we could later add a fallback.
   const headers = [
@@ -186,23 +206,35 @@ proxyRouter.get('/transcode', (req, res): void => {
   ff.stdout.pipe(res);
 
   let errorMsg = '';
-  ff.stderr.on('data', (d) => { errorMsg += d.toString(); });
+  ff.stderr.on('data', (d) => { 
+    errorMsg += d.toString();
+    console.error('[Transcode] FFmpeg stderr:', d.toString().slice(0, 200));
+  });
 
   const cleanup = () => {
     try { ff.kill('SIGKILL'); } catch {}
   };
-  res.on('close', cleanup);
-  res.on('error', cleanup);
+  res.on('close', () => {
+    console.log('[Transcode] Client disconnected');
+    cleanup();
+  });
+  res.on('error', (err) => {
+    console.error('[Transcode] Response error:', err);
+    cleanup();
+  });
 
-  ff.on('error', () => {
+  ff.on('error', (err) => {
+    console.error('[Transcode] FFmpeg spawn error:', err);
     if (!res.headersSent) {
-      res.status(500).json({ message: 'FFmpeg failed to start' });
+      res.status(500).json({ message: 'FFmpeg failed to start', error: String(err) });
     }
     cleanup();
   });
 
   ff.on('close', (code) => {
+    console.log('[Transcode] FFmpeg exited with code:', code);
     if (code !== 0 && !res.headersSent) {
+      console.error('[Transcode] Error details:', errorMsg.slice(0, 1000));
       res.status(502).json({ message: 'Transcode failed', detail: errorMsg.slice(0, 1000) });
     }
     try { res.end(); } catch {}
