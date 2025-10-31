@@ -1,14 +1,23 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 
 interface WebBrowserProps {
   onVideoUrlFound: (url: string) => void;
   onClose: () => void;
 }
 
+interface DetectedVideo {
+  url: string;
+  title: string;
+  type: 'html5' | 'iframe' | 'hls';
+}
+
 function WebBrowser({ onVideoUrlFound, onClose }: WebBrowserProps) {
   const [browserUrl, setBrowserUrl] = useState('');
   const [iframeUrl, setIframeUrl] = useState('');
   const [error, setError] = useState('');
+  const [detectedVideos, setDetectedVideos] = useState<DetectedVideo[]>([]);
+  const [showVideoList, setShowVideoList] = useState(false);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const handleOpenSite = (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,30 +31,102 @@ function WebBrowser({ onVideoUrlFound, onClose }: WebBrowserProps) {
 
     setIframeUrl(url);
     setError('');
+    setDetectedVideos([]);
   };
 
-  const handleExtractVideo = () => {
-    const videoUrl = prompt(
-      '📹 Paste the video URL from the website:\n\n' +
-      'How to find it:\n' +
-      '1. Right-click on video → "Copy video address"\n' +
-      '2. Or inspect element and find <video> src\n' +
-      '3. Or copy page URL if it\'s a video player page'
-    );
+  const handleFindVideos = () => {
+    if (!iframeRef.current) return;
 
-    if (videoUrl) {
-      onVideoUrlFound(videoUrl.trim());
-      onClose();
+    try {
+      const iframeDoc = iframeRef.current.contentDocument || iframeRef.current.contentWindow?.document;
+      if (!iframeDoc) {
+        alert('Cannot access page content (blocked by security policy)');
+        return;
+      }
+
+      const videos: DetectedVideo[] = [];
+
+      // Find HTML5 video tags
+      const videoElements = iframeDoc.querySelectorAll('video');
+      videoElements.forEach((video, index) => {
+        // Get source from <source> tags
+        const sources = video.querySelectorAll('source');
+        sources.forEach((source) => {
+          const src = source.getAttribute('src');
+          const type = source.getAttribute('type') || 'video/mp4';
+          if (src && src.startsWith('http')) {
+            videos.push({
+              url: src,
+              title: `Video ${index + 1} (HTML5)`,
+              type: 'html5',
+            });
+          }
+        });
+
+        // Also check video.src directly
+        if (video.src && video.src.startsWith('http')) {
+          videos.push({
+            url: video.src,
+            title: `Video ${videos.length + 1} (HTML5)`,
+            type: 'html5',
+          });
+        }
+      });
+
+      // Find HLS (.m3u8) streams
+      const scripts = iframeDoc.querySelectorAll('script');
+      const m3u8Regex = /https?:\/\/[^\s'"<>]*\.m3u8[^\s'"<>]*/gi;
+      scripts.forEach((script) => {
+        const matches = script.textContent?.match(m3u8Regex) || [];
+        matches.forEach((url) => {
+          videos.push({
+            url,
+            title: `HLS Stream ${videos.length + 1}`,
+            type: 'hls',
+          });
+        });
+      });
+
+      // Find iframes with video players
+      const iframes = iframeDoc.querySelectorAll('iframe');
+      iframes.forEach((iframe, index) => {
+        const src = iframe.getAttribute('src') || '';
+        if (
+          src &&
+          (src.includes('youtube') ||
+            src.includes('vimeo') ||
+            src.includes('dailymotion') ||
+            src.includes('streamable'))
+        ) {
+          videos.push({
+            url: src,
+            title: `Video Player ${index + 1}`,
+            type: 'iframe',
+          });
+        }
+      });
+
+      if (videos.length === 0) {
+        alert(
+          'No videos found on this page.\n\nTry:\n1. Manually copying video URL\n2. Right-click video → Copy video address\n3. Use "Add Video URL" button'
+        );
+        return;
+      }
+
+      setDetectedVideos(videos);
+      setShowVideoList(true);
+    } catch (err) {
+      console.error('Error scanning for videos:', err);
+      alert(
+        'Cannot scan this page for videos (security restriction).\n\nTry manually extracting the URL instead.'
+      );
     }
   };
 
-  // Popular video sites shortcuts
-  const popularSites = [
-    { name: 'YouTube', url: 'https://youtube.com' },
-    { name: 'Vimeo', url: 'https://vimeo.com' },
-    { name: 'Dailymotion', url: 'https://dailymotion.com' },
-    { name: 'Streamable', url: 'https://streamable.com' },
-  ];
+  const handleSelectVideo = (video: DetectedVideo) => {
+    onVideoUrlFound(video.url);
+    onClose();
+  };
 
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
@@ -54,7 +135,7 @@ function WebBrowser({ onVideoUrlFound, onClose }: WebBrowserProps) {
         <div className="bg-dark border-b border-gray-700 p-4 flex items-center justify-between">
           <h2 className="text-xl font-bold text-white flex items-center gap-2">
             🌐 Web Browser
-            <span className="text-xs text-gray-400 font-normal">Browse any website to find videos</span>
+            <span className="text-xs text-gray-400 font-normal">Browse websites & auto-find videos</span>
           </h2>
           <button
             onClick={onClose}
@@ -82,17 +163,23 @@ function WebBrowser({ onVideoUrlFound, onClose }: WebBrowserProps) {
             </button>
             <button
               type="button"
-              onClick={handleExtractVideo}
+              onClick={handleFindVideos}
               className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg whitespace-nowrap"
+              disabled={!iframeUrl}
             >
-              📹 Use Video URL
+              🎬 Find Videos
             </button>
           </form>
 
           {/* Popular Sites Shortcuts */}
           <div className="mt-2 flex gap-2 flex-wrap">
             <span className="text-xs text-gray-500">Quick:</span>
-            {popularSites.map((site) => (
+            {[
+              { name: 'YouTube', url: 'https://youtube.com' },
+              { name: 'Vimeo', url: 'https://vimeo.com' },
+              { name: 'Dailymotion', url: 'https://dailymotion.com' },
+              { name: 'Streamable', url: 'https://streamable.com' },
+            ].map((site) => (
               <button
                 key={site.name}
                 onClick={() => {
@@ -154,6 +241,7 @@ function WebBrowser({ onVideoUrlFound, onClose }: WebBrowserProps) {
             </div>
           ) : (
             <iframe
+              ref={iframeRef}
               src={iframeUrl}
               className="w-full h-full border-0"
               sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
@@ -162,6 +250,50 @@ function WebBrowser({ onVideoUrlFound, onClose }: WebBrowserProps) {
             />
           )}
         </div>
+
+        {/* Video List Modal */}
+        {showVideoList && detectedVideos.length > 0 && (
+          <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-[60] p-4">
+            <div className="bg-darker rounded-lg shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col border-2 border-green-500">
+              <div className="bg-green-600/20 border-b border-green-500/50 p-4 flex items-center justify-between">
+                <h3 className="text-lg font-bold text-green-300">
+                  🎬 {detectedVideos.length} Video(s) Found - Select One
+                </h3>
+                <button
+                  onClick={() => setShowVideoList(false)}
+                  className="text-green-300 hover:text-white text-2xl"
+                >
+                  ×
+                </button>
+              </div>
+              <div className="overflow-y-auto flex-1 space-y-2 p-4">
+                {detectedVideos.map((video, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => handleSelectVideo(video)}
+                    className="w-full text-left p-4 bg-dark hover:bg-darker/80 border border-gray-600 hover:border-green-500 rounded-lg transition group"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="text-2xl mt-1">
+                        {video.type === 'hls' ? '📡' : video.type === 'iframe' ? '🎥' : '📹'}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-green-300 font-semibold group-hover:text-green-200">
+                          {video.title}
+                        </p>
+                        <p className="text-xs text-gray-400 truncate mt-1">{video.url}</p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Type: {video.type === 'hls' ? 'HLS Stream' : video.type === 'iframe' ? 'Video Player' : 'HTML5 Video'}
+                        </p>
+                      </div>
+                      <div className="text-green-400 text-xl group-hover:scale-110 transition">→</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Instructions Footer */}
         <div className="bg-dark border-t border-gray-700 p-3">
