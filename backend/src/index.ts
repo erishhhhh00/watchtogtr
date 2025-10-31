@@ -11,6 +11,7 @@ import { roomRouter } from './routes/rooms';
 import { setupSocketHandlers } from './socket';
 import { proxyRouter } from './routes/proxy';
 import { rateLimiter } from './middleware/rateLimiter';
+import { initRoomStore } from './storage/rooms';
 
 dotenv.config();
 
@@ -104,8 +105,8 @@ const PORT = process.env.PORT || 3001;
 
 async function startServer() {
   try {
-    logger.info('Using in-memory storage (development mode)');
-    logger.info('For production, configure Redis in docker-compose.yml');
+    // Initialize room storage (Redis if REDIS_URL provided; falls back to memory)
+    await initRoomStore(process.env.REDIS_URL);
     
     httpServer.listen(PORT, () => {
       logger.info(`Server running on port ${PORT}`);

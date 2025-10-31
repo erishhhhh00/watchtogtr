@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { roomCreationLimiter } from '../middleware/rateLimiter';
 import { AppError } from '../middleware/errorHandler';
 import { Room } from '../types';
-import { rooms } from '../socket';
+import { getRoom as loadRoom, setRoom as saveRoom, findRoomByCode, getRoomsCount } from '../storage/rooms';
 import Joi from 'joi';
 import { logger } from '../utils/logger';
 
@@ -51,8 +51,8 @@ roomRouter.post('/', roomCreationLimiter, async (req, res, next) => {
       bannedUntil: {},
     };
 
-    // Store room in memory
-    rooms.set(roomId, room);
+  // Persist room (Redis or memory)
+  await saveRoom(roomId, room);
 
     logger.info(`Room created: id=${roomId}, code=${roomCode}, host=${hostId}`);
     res.status(201).json({ room });
@@ -67,17 +67,10 @@ roomRouter.get('/code/:code', async (req, res, next) => {
     const { code } = req.params;
 
     logger.info(`Looking up room by code: "${code}"`);
-    logger.info(`Total rooms in memory: ${rooms.size}`);
+    const total = await getRoomsCount();
+    logger.info(`Total rooms stored: ${total}`);
 
-    // Find room by code
-    let foundRoom = null;
-    for (const [, room] of rooms.entries()) {
-      logger.info(`Checking room ${room.id} with code "${room.code}"`);
-      if (room.code === code) {
-        foundRoom = room;
-        break;
-      }
-    }
+    const foundRoom = await findRoomByCode(code);
 
     if (!foundRoom) {
       logger.warn(`Room not found for code: "${code}"`);
@@ -95,7 +88,7 @@ roomRouter.get('/:roomId', async (req, res, next) => {
   try {
     const { roomId } = req.params;
 
-    const room = rooms.get(roomId);
+    const room = await loadRoom(roomId);
     if (!room) {
       throw new AppError('Room not found', 404);
     }
@@ -115,7 +108,7 @@ roomRouter.post('/:roomId/join', async (req, res, next) => {
       throw new AppError('User ID required', 400);
     }
 
-    const roomData = rooms.get(roomId);
+    const roomData = await loadRoom(roomId);
     if (!roomData) {
       throw new AppError('Room not found', 404);
     }
@@ -136,7 +129,7 @@ roomRouter.post('/:roomId/join', async (req, res, next) => {
 
     if (!room.participants.includes(userId)) {
       room.participants.push(userId);
-      rooms.set(roomId, room);
+      await saveRoom(roomId, room);
     }
 
     res.json({ room });

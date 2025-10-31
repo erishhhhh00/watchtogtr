@@ -1,7 +1,8 @@
 import { Server as SocketIOServer, Socket } from 'socket.io';
-import { Room, ChatMessage, SocketUser } from '../types';
+import { ChatMessage, SocketUser } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { logger } from '../utils/logger';
+import { getRoom, setRoom } from '../storage/rooms';
 
 /**
  * SYNCHRONIZATION ALGORITHM:
@@ -20,18 +21,9 @@ import { logger } from '../utils/logger';
  * - Faster sync intervals (500ms checks, 3s server broadcast) for tighter sync
  */
 
-// In-memory storage (replaces Redis for development)
-const rooms = new Map<string, Room>();
 const activeSockets = new Map<string, SocketUser>();
 
-// Helper to get/set room data
-async function getRoom(roomId: string): Promise<Room | null> {
-  return rooms.get(roomId) || null;
-}
-
-async function setRoom(roomId: string, room: Room): Promise<void> {
-  rooms.set(roomId, room);
-}
+// Room data is persisted via storage/rooms (Redis or in-memory fallback)
 
 export function setupSocketHandlers(io: SocketIOServer) {
   io.on('connection', (socket: Socket) => {
@@ -500,5 +492,3 @@ export function setupSocketHandlers(io: SocketIOServer) {
   }, 3000);
 }
 
-// Export room storage for routes
-export { rooms };
