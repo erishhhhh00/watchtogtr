@@ -60,7 +60,7 @@ function Controls() {
             <span>Add Video / Browse Links</span>
           </button>
           <p className="text-xs text-gray-500 text-center">
-            Support: YouTube, Google Drive, HLS, Direct MP4/WebM
+            Supports: YouTube, Drive, Vimeo, Mega, Streamable + Any direct video link
           </p>
         </div>
       ) : (
@@ -116,9 +116,10 @@ function Controls() {
             </div>
             <div className="mt-2 text-xs text-gray-400 space-y-1">
               <p>📺 <strong>YouTube:</strong> https://youtube.com/watch?v=...</p>
-              <p>� <strong>Google Drive:</strong> Right-click file → Get link → Paste here</p>
-              <p>📡 <strong>HLS Stream:</strong> https://example.com/stream.m3u8</p>
-              <p>🎬 <strong>Direct Link:</strong> https://example.com/video.mp4</p>
+              <p>📁 <strong>Google Drive:</strong> Right-click file → Get link → Paste here</p>
+              <p>🎬 <strong>Direct Video:</strong> Any .mp4, .webm, .mkv file URL</p>
+              <p>📡 <strong>HLS Stream:</strong> .m3u8 playlist URLs</p>
+              <p>� <strong>Other Sites:</strong> Vimeo, Dailymotion, Streamable, Mega, etc.</p>
             </div>
           </div>
 

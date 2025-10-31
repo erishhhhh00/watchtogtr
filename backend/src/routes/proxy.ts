@@ -20,18 +20,52 @@ proxyRouter.get('/health', (_req, res): void => {
   });
 });
 
-// Very small allowlist to avoid open proxy misuse
+// Allowlist for proxy - now supports many common video hosting sites
 const ALLOWED_HOSTS = new Set<string>([
   'drive.google.com',
   'docs.google.com',
-  // After Google redirects, files are served from *.googleusercontent.com
-  // We'll allow these hosts generically.
+  'youtube.com',
+  'youtu.be',
+  'vimeo.com',
+  'dailymotion.com',
+  'streamable.com',
+  'seedr.cc',
+  'mega.nz',
+  'mediafire.com',
+  'dropbox.com',
+  'box.com',
+  'onedrive.live.com',
+  '1drv.ms',
+  'wetransfer.com',
+  'gofile.io',
+  'streamtape.com',
+  'doodstream.com',
+  'mixdrop.co',
+  'terabox.com',
+  // Add common CDNs and video platforms
+  'cloudflare.com',
+  'akamai.net',
+  'fastly.net',
+  'amazonaws.com',
+  'cloudfront.net',
 ]);
 
 function isAllowed(target: URL) {
   if (ALLOWED_HOSTS.has(target.hostname)) return true;
-  // Allow *.googleusercontent.com
+  
+  // Allow common patterns
+  // *.googleusercontent.com
   if (/\.googleusercontent\.com$/i.test(target.hostname)) return true;
+  // *.googleapis.com
+  if (/\.googleapis\.com$/i.test(target.hostname)) return true;
+  // *.gvt1.com (Google video)
+  if (/\.gvt1\.com$/i.test(target.hostname)) return true;
+  // Any .mp4, .webm, .mkv, .m3u8 direct file URLs from any domain
+  if (/\.(mp4|webm|mkv|avi|mov|flv|m3u8|ts)(\?|$)/i.test(target.pathname)) return true;
+  
+  // For security: block localhost, private IPs, and file:// protocols
+  if (/^(localhost|127\.|192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.)/.test(target.hostname)) return false;
+  
   return false;
 }
 
