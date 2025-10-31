@@ -26,7 +26,7 @@ const getYouTubeVideoId = (url: string): string | null => {
 const API_URL = (import.meta as any).env.VITE_API_URL || 'http://localhost:3001';
 
 // Helper to convert Google Drive link to proxied direct stream URL
-const getGoogleDriveDirectUrl = (url: string): string => {
+const getGoogleDriveDirectUrl = (url: string, forceTranscode?: boolean): string => {
   // Extract file ID from various Google Drive URL formats
   const patterns = [
     /drive\.google\.com\/file\/d\/([^\/]+)/,
@@ -39,7 +39,14 @@ const getGoogleDriveDirectUrl = (url: string): string => {
     if (match) {
       const fileId = match[1];
       const direct = `https://drive.google.com/uc?export=download&id=${fileId}`;
-      // Route through backend proxy to avoid CORS and support Range
+      
+      // If forceTranscode or URL suggests MKV, use transcode endpoint immediately
+      if (forceTranscode || /\.mkv/i.test(url)) {
+        console.log('[VideoPlayer] Using transcode endpoint for Drive MKV');
+        return `${API_URL}/api/proxy/transcode?url=${encodeURIComponent(direct)}`;
+      }
+      
+      // Otherwise try proxy first
       return `${API_URL}/api/proxy/video?url=${encodeURIComponent(direct)}`;
     }
   }
@@ -290,7 +297,13 @@ function VideoPlayer() {
       let processedUrl = url;
       if (url.includes('drive.google.com')) {
         driveTranscodeTriedRef.current = false;
-        processedUrl = getGoogleDriveDirectUrl(url);
+        // Check if URL contains .mkv in the file name
+        const isMKV = /\.mkv/i.test(url);
+        if (isMKV) {
+          console.log('[VideoPlayer] Detected MKV file, using transcode from start');
+          setError('🔄 Transcoding MKV file for browser playback...');
+        }
+        processedUrl = getGoogleDriveDirectUrl(url, isMKV);
       } else if (url.includes('seedr.cc')) {
         processedUrl = getSeedrDirectUrl(url);
       }
@@ -298,13 +311,16 @@ function VideoPlayer() {
       // Sync video source
       if (video.src !== processedUrl) {
         setIsLoading(true);
-        setError('');
+        if (!url.includes('.mkv')) {
+          setError(''); // Only clear error if not MKV (keep transcode message)
+        }
         video.src = processedUrl;
         video.load();
         video.currentTime = playbackState.currentTime;
         
         const handleCanPlay = () => {
           setIsLoading(false);
+          setError(''); // Clear any transcode/loading messages
           console.log('Video can play');
           isBufferingRef.current = false;
         };
