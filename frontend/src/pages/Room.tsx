@@ -19,6 +19,7 @@ function Room() {
   const participants = useRoomStore((state) => state.participants);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [isChatOpen, setIsChatOpen] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const socketConnected = useRef(false);
   const isInitialized = useRef(false);
@@ -279,9 +280,27 @@ function Room() {
         {/* Sidebar */}
         <div className="w-full lg:w-96 flex flex-col gap-4">
           <ParticipantsList />
-          <ChatPanel />
+          {/* Chat moved to floating bubble */}
         </div>
       </div>
+
+      {/* Floating Chat Bubble */}
+      <button
+        onClick={() => setIsChatOpen((v) => !v)}
+        className="fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full shadow-lg bg-primary hover:bg-primary/90 text-white text-2xl flex items-center justify-center"
+        title={isChatOpen ? 'Close Chat' : 'Open Chat'}
+      >
+        {isChatOpen ? '✖' : '💬'}
+      </button>
+
+      {/* Floating Chat Panel */}
+      {isChatOpen && (
+        <div className="fixed bottom-24 right-4 z-50 w-[360px] max-w-[92vw]">
+          <div className="bg-darker border border-pink-500/30 rounded-xl shadow-2xl overflow-hidden">
+            <ChatPanel />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
