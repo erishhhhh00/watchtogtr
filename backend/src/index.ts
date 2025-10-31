@@ -14,12 +14,18 @@ import { rateLimiter } from './middleware/rateLimiter';
 
 dotenv.config();
 
-const app = express();
-const httpServer = createServer(app);
-
 // Helpers
 function isDev() {
   return (process.env.NODE_ENV || 'development') !== 'production';
+}
+
+const app = express();
+const httpServer = createServer(app);
+
+// Trust proxy for production (Render, Vercel, etc.)
+// This allows express-rate-limit to correctly identify clients behind reverse proxies
+if (!isDev()) {
+  app.set('trust proxy', 1);
 }
 
 function getAllowedOrigins(): string[] {
