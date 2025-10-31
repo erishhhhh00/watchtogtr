@@ -168,8 +168,9 @@ proxyRouter.get('/transcode', (req, res): void => {
   ];
 
   const outputArgs = [
-    // Try to transmux (copy) first; many WEB-DL MKVs are H.264/AAC already.
-    '-c:v', 'copy', '-c:a', 'aac', '-strict', 'experimental',
+    // Re-encode to H.264/AAC for universal browser support (slower but reliable for MKV)
+    '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28',
+    '-c:a', 'aac', '-b:a', '128k', '-ar', '44100',
     // Make it streamable fragmented MP4
     '-f', 'mp4', '-movflags', 'frag_keyframe+empty_moov+faststart',
     '-reset_timestamps', '1',

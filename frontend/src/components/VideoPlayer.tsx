@@ -326,13 +326,14 @@ function VideoPlayer() {
               if (m) { directUrl = `https://drive.google.com/uc?export=download&id=${m[1]}`; break; }
             }
             const transcodeUrl = `${API_URL}/api/proxy/transcode?url=${encodeURIComponent(directUrl)}`;
-            setError('');
+            console.log('[VideoPlayer] Direct playback failed, retrying via transcode:', transcodeUrl);
+            setError('Converting video for playback...');
             setIsLoading(true);
             video.src = transcodeUrl;
             video.load();
             return;
           }
-          setError('Failed to load video. Use a direct MP4/WebM link, or an HLS .m3u8 stream.');
+          setError('Failed to load video. Google Drive MKV may be too large or blocked. Try a direct MP4/WebM link, or an HLS .m3u8 stream.');
         };
         const handleWaiting = () => {
           isBufferingRef.current = true;
