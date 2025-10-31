@@ -258,7 +258,7 @@ function VideoPlayer() {
                 default:
                   hls.destroy();
                   hlsRef.current = null;
-                  setError('Failed to play HLS stream.');
+                  setError('⚠️ Failed to load HLS stream (.m3u8).');
                   setIsLoading(false);
                   break;
               }

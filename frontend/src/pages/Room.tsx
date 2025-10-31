@@ -158,7 +158,13 @@ function Room() {
       } catch (err: any) {
         console.error('Room init error:', err);
         console.error('Error response:', err.response?.data);
-        setError(err.response?.data?.message || 'Failed to join room');
+        
+        // If room not found, it might have been cleared due to server restart
+        if (err.response?.status === 404) {
+          setError('Room not found. The server may have restarted. Please create a new room.');
+        } else {
+          setError(err.response?.data?.message || 'Failed to join room');
+        }
         setLoading(false);
       }
     };
