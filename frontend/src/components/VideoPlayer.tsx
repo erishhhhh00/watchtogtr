@@ -86,6 +86,23 @@ const getProxiedUrl = (url: string): string => {
   return url;
 };
 
+// Helper to fetch Streamtape direct video URL via API
+const getStreamtapeDirectUrl = async (url: string): Promise<string> => {
+  try {
+    const response = await fetch(`${API_URL}/api/proxy/streamtape/info?url=${encodeURIComponent(url)}`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch Streamtape video info');
+    }
+    const data = await response.json();
+    // Return the proxy URL which contains the direct video URL
+    return data.proxyUrl || data.videoUrl || url;
+  } catch (error) {
+    console.error('[VideoPlayer] Streamtape API error:', error);
+    // Fallback to original URL
+    return url;
+  }
+};
+
 function VideoPlayer() {
   const { room, isHost } = useRoomStore();
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -318,32 +335,48 @@ function VideoPlayer() {
       const video = videoRef.current;
 
       // Process URL based on source
-      let processedUrl = url;
-      if (url.includes('drive.google.com')) {
-        driveTranscodeTriedRef.current = false;
-        // Check if URL contains .mkv in the file name
-        const isMKV = /\.mkv/i.test(url);
-        if (isMKV) {
-          console.log('[VideoPlayer] Detected MKV file, using transcode from start');
-          setError('🔄 Transcoding MKV file for browser playback...');
+      const processUrl = async () => {
+        let processedUrl = url;
+        
+        // Check if it's a Streamtape embed URL
+        const isStreamtapeEmbed = /streamtape\.com\/(e|v)\//.test(url);
+        
+        if (url.includes('drive.google.com')) {
+          driveTranscodeTriedRef.current = false;
+          // Check if URL contains .mkv in the file name
+          const isMKV = /\.mkv/i.test(url);
+          if (isMKV) {
+            console.log('[VideoPlayer] Detected MKV file, using transcode from start');
+            setError('🔄 Transcoding MKV file for browser playback...');
+          }
+          processedUrl = getGoogleDriveDirectUrl(url, isMKV);
+        } else if (isStreamtapeEmbed) {
+          // Streamtape embed URL - fetch actual video URL via API
+          console.log('[VideoPlayer] Detected Streamtape embed, fetching direct URL...');
+          setError('🔄 Loading Streamtape video...');
+          setIsLoading(true);
+          processedUrl = await getStreamtapeDirectUrl(url);
+          console.log('[VideoPlayer] Got Streamtape URL:', processedUrl);
+        } else if (url.includes('seedr.cc')) {
+          processedUrl = getSeedrDirectUrl(url);
+        } else {
+          // For other sources (Doodstream, Mixdrop, etc.), use proxy
+          processedUrl = getProxiedUrl(url);
         }
-        processedUrl = getGoogleDriveDirectUrl(url, isMKV);
-      } else if (url.includes('seedr.cc')) {
-        processedUrl = getSeedrDirectUrl(url);
-      } else {
-        // For other sources (Streamtape, Doodstream, Mixdrop, etc.), use proxy
-        processedUrl = getProxiedUrl(url);
-      }
 
-      // Sync video source
-      if (video.src !== processedUrl) {
-        setIsLoading(true);
-        if (!url.includes('.mkv')) {
-          setError(''); // Only clear error if not MKV (keep transcode message)
+        // Sync video source
+        if (video.src !== processedUrl) {
+          setIsLoading(true);
+          if (!url.includes('.mkv') && !isStreamtapeEmbed) {
+            setError(''); // Only clear error if not MKV/Streamtape (keep loading message)
+          }
+          video.src = processedUrl;
+          video.load();
+          video.currentTime = playbackState.currentTime;
         }
-        video.src = processedUrl;
-        video.load();
-        video.currentTime = playbackState.currentTime;
+      };
+
+      processUrl();
         
         const handleCanPlay = () => {
           setIsLoading(false);
