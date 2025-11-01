@@ -400,14 +400,28 @@ proxyRouter.get('/streamtape/info', async (req, res): Promise<void> => {
           const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
           const title = titleMatch ? titleMatch[1].replace(' - Streamtape', '').trim() : `Video ${videoId}`;
           
-          // Extract direct video URL from the page
-          const videoMatch = html.match(/getElementById\('videolink'\)\.innerHTML\s*=\s*["']([^"']+)["']\s*\+\s*["']([^"']+)["']/);
+          // Extract direct video URL from the obfuscated JavaScript
+          // Pattern: document.getElementById('robotlink').innerHTML = 'PARTIAL_URL' + 'TOKEN';
+          const robotlinkMatch = html.match(/getElementById\s*\(\s*['"](robotlink|videolink)['"]\s*\)\s*\.innerHTML\s*=\s*['"]([^'"]+)['"]\s*\+\s*['"]([^'"]+)['"]/i);
+          
           let directVideoUrl = '';
           
-          if (videoMatch) {
-            const baseUrl = videoMatch[1];
-            const token = videoMatch[2];
-            directVideoUrl = `https:${baseUrl}${token}`;
+          if (robotlinkMatch) {
+            // Combine the two parts of the URL
+            const partialUrl = robotlinkMatch[2];
+            const token = robotlinkMatch[3];
+            
+            // Remove leading slash/whitespace from token if present
+            const cleanToken = token.replace(/^[\/\s]+/, '');
+            
+            // Construct full URL - add https: if missing
+            if (partialUrl.startsWith('//')) {
+              directVideoUrl = `https:${partialUrl}${cleanToken}`;
+            } else if (partialUrl.startsWith('http')) {
+              directVideoUrl = `${partialUrl}${cleanToken}`;
+            } else {
+              directVideoUrl = `https:${partialUrl}${cleanToken}`;
+            }
           } else {
             // Fallback: use the embed URL
             directVideoUrl = embedUrl;
