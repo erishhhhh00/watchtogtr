@@ -62,6 +62,30 @@ const getSeedrDirectUrl = (url: string): string => {
   return url;
 };
 
+// Helper to proxy any external video URL through backend
+const getProxiedUrl = (url: string): string => {
+  // If it's already a proxied URL, return as-is
+  if (url.includes('/api/proxy/')) {
+    return url;
+  }
+  
+  // Check if URL needs proxying (external sources like Streamtape, Doodstream, etc.)
+  const needsProxy = [
+    'streamtape.com', 'streamtape.net', 'strtape.tech', 'stape.fun',
+    'doodstream.com', 'dood.to', 'dood.la',
+    'mixdrop.co', 'mixdrop.to',
+    'terabox.com',
+    'mega.nz',
+    'mediafire.com',
+  ].some(host => url.includes(host));
+  
+  if (needsProxy) {
+    return `${API_URL}/api/proxy/video?url=${encodeURIComponent(url)}`;
+  }
+  
+  return url;
+};
+
 function VideoPlayer() {
   const { room, isHost } = useRoomStore();
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -306,6 +330,9 @@ function VideoPlayer() {
         processedUrl = getGoogleDriveDirectUrl(url, isMKV);
       } else if (url.includes('seedr.cc')) {
         processedUrl = getSeedrDirectUrl(url);
+      } else {
+        // For other sources (Streamtape, Doodstream, Mixdrop, etc.), use proxy
+        processedUrl = getProxiedUrl(url);
       }
 
       // Sync video source
