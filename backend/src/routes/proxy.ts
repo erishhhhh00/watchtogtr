@@ -417,13 +417,13 @@ proxyRouter.get('/streamtape/info', async (req, res): Promise<void> => {
             const downloadUrl = fileInfo.url || `https://streamtape.com/get_video?id=${videoId}`;
             
             resolve({ title, videoUrl: downloadUrl });
-          } catch (error) {
-            console.error('[Streamtape API] Parse error, falling back to scraping');
+          } catch (err) {
+            console.error('[Streamtape API] Parse error:', err);
             fallbackToScraping(videoId, resolve, reject);
           }
         });
-      }).on('error', (error) => {
-        console.error('[Streamtape API] Request error, falling back to scraping');
+      }).on('error', (err) => {
+        console.error('[Streamtape API] Request error:', err);
         fallbackToScraping(videoId, resolve, reject);
       });
     });
