@@ -387,56 +387,52 @@ proxyRouter.get('/streamtape/info', async (req, res): Promise<void> => {
     return;
   }
 
+  // Streamtape API credentials
+  const API_USERNAME = '7313d6480c4c809baaba';
+  const API_PASSWORD = process.env.STREAMTAPE_API_PASSWORD || ''; // Set this in environment
+
   try {
-    // Try to fetch the embed page to extract video info
-    const embedUrl = `https://streamtape.com/e/${videoId}`;
+    // Use Streamtape official API to get download ticket
+    const apiUrl = `https://api.streamtape.com/file/info?login=${API_USERNAME}&key=${API_PASSWORD}&file=${videoId}`;
     
     const response = await new Promise<{ title: string; videoUrl: string }>((resolve, reject) => {
-      https.get(embedUrl, (embedRes) => {
-        let html = '';
-        embedRes.on('data', (chunk) => { html += chunk; });
-        embedRes.on('end', () => {
-          // Extract title from HTML
-          const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
-          const title = titleMatch ? titleMatch[1].replace(' - Streamtape', '').trim() : `Video ${videoId}`;
-          
-          // Extract direct video URL from the obfuscated JavaScript
-          // Pattern: document.getElementById('robotlink').innerHTML = 'PARTIAL_URL' + 'TOKEN';
-          const robotlinkMatch = html.match(/getElementById\s*\(\s*['"](robotlink|videolink)['"]\s*\)\s*\.innerHTML\s*=\s*['"]([^'"]+)['"]\s*\+\s*['"]([^'"]+)['"]/i);
-          
-          let directVideoUrl = '';
-          
-          if (robotlinkMatch) {
-            // Combine the two parts of the URL
-            const partialUrl = robotlinkMatch[2];
-            const token = robotlinkMatch[3];
+      https.get(apiUrl, (apiRes) => {
+        let data = '';
+        apiRes.on('data', (chunk) => { data += chunk; });
+        apiRes.on('end', () => {
+          try {
+            const json = JSON.parse(data);
             
-            // Remove leading slash/whitespace from token if present
-            const cleanToken = token.replace(/^[\/\s]+/, '');
-            
-            // Construct full URL - add https: if missing
-            if (partialUrl.startsWith('//')) {
-              directVideoUrl = `https:${partialUrl}${cleanToken}`;
-            } else if (partialUrl.startsWith('http')) {
-              directVideoUrl = `${partialUrl}${cleanToken}`;
-            } else {
-              directVideoUrl = `https:${partialUrl}${cleanToken}`;
+            if (json.status !== 200 || !json.result) {
+              // Fallback to HTML scraping if API fails
+              console.log('[Streamtape API] API failed, falling back to scraping');
+              fallbackToScraping(videoId, resolve, reject);
+              return;
             }
-          } else {
-            // Fallback: use the embed URL
-            directVideoUrl = embedUrl;
-          }
 
-          resolve({ title, videoUrl: directVideoUrl });
+            const fileInfo = json.result;
+            const title = fileInfo.name || `Video ${videoId}`;
+            
+            // Get download link - Streamtape requires a ticket system
+            const downloadUrl = fileInfo.url || `https://streamtape.com/get_video?id=${videoId}`;
+            
+            resolve({ title, videoUrl: downloadUrl });
+          } catch (error) {
+            console.error('[Streamtape API] Parse error, falling back to scraping');
+            fallbackToScraping(videoId, resolve, reject);
+          }
         });
-      }).on('error', reject);
+      }).on('error', (error) => {
+        console.error('[Streamtape API] Request error, falling back to scraping');
+        fallbackToScraping(videoId, resolve, reject);
+      });
     });
 
     res.json({
       id: videoId,
       title: response.title,
       videoUrl: response.videoUrl,
-      embedUrl: embedUrl,
+      embedUrl: `https://streamtape.com/e/${videoId}`,
       proxyUrl: `${req.protocol}://${req.get('host')}/api/proxy/video?url=${encodeURIComponent(response.videoUrl)}`,
     });
   } catch (error) {
@@ -447,3 +443,51 @@ proxyRouter.get('/streamtape/info', async (req, res): Promise<void> => {
     });
   }
 });
+
+// Fallback function to scrape HTML if API fails
+function fallbackToScraping(
+  videoId: string,
+  resolve: (value: { title: string; videoUrl: string }) => void,
+  reject: (reason?: any) => void
+) {
+  const embedUrl = `https://streamtape.com/e/${videoId}`;
+  
+  https.get(embedUrl, (embedRes) => {
+    let html = '';
+    embedRes.on('data', (chunk) => { html += chunk; });
+    embedRes.on('end', () => {
+      // Extract title from HTML
+      const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
+      const title = titleMatch ? titleMatch[1].replace(' - Streamtape', '').trim() : `Video ${videoId}`;
+      
+      // Extract direct video URL from the obfuscated JavaScript
+      // Pattern: document.getElementById('robotlink').innerHTML = 'PARTIAL_URL' + 'TOKEN';
+      const robotlinkMatch = html.match(/getElementById\s*\(\s*['"](robotlink|videolink)['"]\s*\)\s*\.innerHTML\s*=\s*['"]([^'"]+)['"]\s*\+\s*['"]([^'"]+)['"]/i);
+      
+      let directVideoUrl = '';
+      
+      if (robotlinkMatch) {
+        // Combine the two parts of the URL
+        const partialUrl = robotlinkMatch[2];
+        const token = robotlinkMatch[3];
+        
+        // Remove leading slash/whitespace from token if present
+        const cleanToken = token.replace(/^[\/\s]+/, '');
+        
+        // Construct full URL - add https: if missing
+        if (partialUrl.startsWith('//')) {
+          directVideoUrl = `https:${partialUrl}${cleanToken}`;
+        } else if (partialUrl.startsWith('http')) {
+          directVideoUrl = `${partialUrl}${cleanToken}`;
+        } else {
+          directVideoUrl = `https:${partialUrl}${cleanToken}`;
+        }
+      } else {
+        // Last resort fallback
+        directVideoUrl = embedUrl;
+      }
+
+      resolve({ title, videoUrl: directVideoUrl });
+    });
+  }).on('error', reject);
+}
