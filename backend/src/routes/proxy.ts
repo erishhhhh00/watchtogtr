@@ -389,40 +389,71 @@ proxyRouter.get('/streamtape/info', async (req, res): Promise<void> => {
 
   // Streamtape API credentials
   const API_USERNAME = '7313d6480c4c809baaba';
-  const API_PASSWORD = process.env.STREAMTAPE_API_PASSWORD || ''; // Set this in environment
+  const API_PASSWORD = process.env.STREAMTAPE_API_PASSWORD || '';
 
   try {
-    // Use Streamtape official API to get download ticket
-    const apiUrl = `https://api.streamtape.com/file/info?login=${API_USERNAME}&key=${API_PASSWORD}&file=${videoId}`;
+    // Use Streamtape official API to get download link with ticket system
+    const ticketUrl = `https://api.streamtape.com/file/dlticket?login=${API_USERNAME}&key=${API_PASSWORD}&file=${videoId}`;
+    
+    console.log('[Streamtape API] Fetching ticket for video:', videoId);
     
     const response = await new Promise<{ title: string; videoUrl: string }>((resolve, reject) => {
-      https.get(apiUrl, (apiRes) => {
+      https.get(ticketUrl, (apiRes) => {
         let data = '';
         apiRes.on('data', (chunk) => { data += chunk; });
         apiRes.on('end', () => {
           try {
             const json = JSON.parse(data);
+            console.log('[Streamtape API] Ticket response:', json);
             
-            if (json.status !== 200 || !json.result) {
+            if (json.status !== 200 || !json.result || !json.result.ticket) {
               // Fallback to HTML scraping if API fails
-              console.log('[Streamtape API] API failed, falling back to scraping');
+              console.log('[Streamtape API] API failed or no credentials, falling back to scraping');
               fallbackToScraping(videoId, resolve, reject);
               return;
             }
 
-            const fileInfo = json.result;
-            const title = fileInfo.name || `Video ${videoId}`;
+            const ticket = json.result.ticket;
+            const waitTime = json.result.wait_time || 0;
             
-            // Get download link - Streamtape requires a ticket system
-            const downloadUrl = fileInfo.url || `https://streamtape.com/get_video?id=${videoId}`;
-            
-            resolve({ title, videoUrl: downloadUrl });
+            // Get download URL using ticket after wait time
+            setTimeout(() => {
+              const downloadApiUrl = `https://api.streamtape.com/file/dl?file=${videoId}&ticket=${ticket}`;
+              https.get(downloadApiUrl, (dlRes) => {
+                let dlData = '';
+                dlRes.on('data', (chunk) => { dlData += chunk; });
+                dlRes.on('end', () => {
+                  try {
+                    const dlJson = JSON.parse(dlData);
+                    console.log('[Streamtape API] Download response:', dlJson);
+                    
+                    if (dlJson.status !== 200 || !dlJson.result || !dlJson.result.url) {
+                      console.log('[Streamtape API] Download failed, falling back to scraping');
+                      fallbackToScraping(videoId, resolve, reject);
+                      return;
+                    }
+                    
+                    const title = dlJson.result.name || `Video ${videoId}`;
+                    const downloadUrl = dlJson.result.url;
+                    
+                    console.log('[Streamtape API] Got direct URL:', downloadUrl);
+                    resolve({ title, videoUrl: downloadUrl });
+                  } catch (err) {
+                    console.error('[Streamtape API] Download parse error:', err);
+                    fallbackToScraping(videoId, resolve, reject);
+                  }
+                });
+              }).on('error', (err) => {
+                console.error('[Streamtape API] Download request error:', err);
+                fallbackToScraping(videoId, resolve, reject);
+              });
+            }, waitTime * 1000);
           } catch (err) {
             console.error('[Streamtape API] Parse error:', err);
             fallbackToScraping(videoId, resolve, reject);
           }
         });
-      }).on('error', (err) => {
+      }).on('error', (err) {
         console.error('[Streamtape API] Request error:', err);
         fallbackToScraping(videoId, resolve, reject);
       });
