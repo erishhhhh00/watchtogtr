@@ -20,6 +20,7 @@ const createRoomSchema = Joi.object({
   maxParticipants: Joi.number().min(2).max(50).default(10),
 });
 
+// Create new room endpoint
 roomRouter.post('/', roomCreationLimiter, async (req, res, next) => {
   try {
     const { error, value } = createRoomSchema.validate(req.body);
@@ -27,10 +28,7 @@ roomRouter.post('/', roomCreationLimiter, async (req, res, next) => {
       throw new AppError(error.details[0].message, 400);
     }
 
-    cons    sudo apt update
-    sudo apt install -y nginx curl
-    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-    sudo apt install -y nodejst { name, hostId, maxParticipants } = value;
+    const { name, hostId, maxParticipants } = value;
 
     const roomId = uuidv4();
     const roomCode = generateRoomCode();
