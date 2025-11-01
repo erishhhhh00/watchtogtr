@@ -354,3 +354,82 @@ proxyRouter.get('/transcode', (req, res): void => {
     });
   }
 });
+
+// Streamtape API integration - get video info
+proxyRouter.get('/streamtape/info', async (req, res): Promise<void> => {
+  const videoUrl = (req.query.url as string) || '';
+  
+  if (!videoUrl) {
+    res.status(400).json({ message: 'Missing url parameter' });
+    return;
+  }
+
+  // Extract video ID from Streamtape URL
+  const patterns = [
+    /streamtape\.com\/v\/([a-zA-Z0-9_-]+)/,
+    /streamtape\.com\/e\/([a-zA-Z0-9_-]+)/,
+    /streamta\.pe\/([a-zA-Z0-9_-]+)/,
+    /strtape\.tech\/v\/([a-zA-Z0-9_-]+)/,
+    /stape\.fun\/v\/([a-zA-Z0-9_-]+)/,
+  ];
+
+  let videoId = '';
+  for (const pattern of patterns) {
+    const match = videoUrl.match(pattern);
+    if (match) {
+      videoId = match[1];
+      break;
+    }
+  }
+
+  if (!videoId) {
+    res.status(400).json({ message: 'Invalid Streamtape URL' });
+    return;
+  }
+
+  try {
+    // Try to fetch the embed page to extract video info
+    const embedUrl = `https://streamtape.com/e/${videoId}`;
+    
+    const response = await new Promise<{ title: string; videoUrl: string }>((resolve, reject) => {
+      https.get(embedUrl, (embedRes) => {
+        let html = '';
+        embedRes.on('data', (chunk) => { html += chunk; });
+        embedRes.on('end', () => {
+          // Extract title from HTML
+          const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
+          const title = titleMatch ? titleMatch[1].replace(' - Streamtape', '').trim() : `Video ${videoId}`;
+          
+          // Extract direct video URL from the page
+          const videoMatch = html.match(/getElementById\('videolink'\)\.innerHTML\s*=\s*["']([^"']+)["']\s*\+\s*["']([^"']+)["']/);
+          let directVideoUrl = '';
+          
+          if (videoMatch) {
+            const baseUrl = videoMatch[1];
+            const token = videoMatch[2];
+            directVideoUrl = `https:${baseUrl}${token}`;
+          } else {
+            // Fallback: use the embed URL
+            directVideoUrl = embedUrl;
+          }
+
+          resolve({ title, videoUrl: directVideoUrl });
+        });
+      }).on('error', reject);
+    });
+
+    res.json({
+      id: videoId,
+      title: response.title,
+      videoUrl: response.videoUrl,
+      embedUrl: embedUrl,
+      proxyUrl: `${req.protocol}://${req.get('host')}/api/proxy/video?url=${encodeURIComponent(response.videoUrl)}`,
+    });
+  } catch (error) {
+    console.error('[Streamtape API] Error:', error);
+    res.status(500).json({ 
+      message: 'Failed to fetch Streamtape video info',
+      error: String(error),
+    });
+  }
+});

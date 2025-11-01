@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useRoomStore } from '../stores/roomStore';
 import { socketService } from '../services/socket';
 import WebBrowser from './WebBrowser';
+import { StreamtapeBrowser } from './StreamtapeBrowser';
 
 // Infer video type from URL when possible
 function detectTypeFromUrl(url: string): 'mp4' | 'youtube' | 'hls' {
@@ -20,6 +21,7 @@ function Controls() {
   const { room, isHost } = useRoomStore();
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [showWebBrowser, setShowWebBrowser] = useState(false);
+  const [showStreamtapeBrowser, setShowStreamtapeBrowser] = useState(false);
   const [videoUrl, setVideoUrl] = useState('');
   const [videoType, setVideoType] = useState<'mp4' | 'youtube' | 'hls'>('mp4');
 
@@ -67,6 +69,13 @@ function Controls() {
           >
             <span>🌐</span>
             <span>Browse Any Website</span>
+          </button>
+          <button
+            onClick={() => setShowStreamtapeBrowser(true)}
+            className="w-full bg-purple-600 hover:bg-purple-700 text-white font-medium py-3 rounded-lg flex items-center justify-center gap-2"
+          >
+            <span>📺</span>
+            <span>Add from Streamtape</span>
           </button>
           <p className="text-xs text-gray-500 text-center">
             Supports: YouTube, Drive, Vimeo, Mega, Streamable + Any direct video link
@@ -170,6 +179,19 @@ function Controls() {
             setVideoType(inferred);
           }}
           onClose={() => setShowWebBrowser(false)}
+        />
+      )}
+
+      {/* Streamtape Browser Modal */}
+      {showStreamtapeBrowser && (
+        <StreamtapeBrowser
+          onVideoSelect={(url) => {
+            if (room) {
+              socketService.changeSource(room.id, url, 'mp4');
+              setShowStreamtapeBrowser(false);
+            }
+          }}
+          onClose={() => setShowStreamtapeBrowser(false)}
         />
       )}
     </div>

@@ -1,63 +1,49 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Quick setup script for Ubuntu/Debian VPS (no domain). Run from repo root.
+# VPS bootstrap script for Ubuntu to run the app with Docker in production
+# Usage: sudo ./scripts/vps-setup.sh <PUBLIC_ORIGIN>
+# Example without domain: sudo ./scripts/vps-setup.sh http://YOUR_VPS_IP
+# Example with domain + SSL terminated elsewhere: sudo ./scripts/vps-setup.sh https://yourdomain.com
 
-if [ "${EUID}" -ne 0 ]; then
-  echo "[i] Not root: some steps will use sudo"
+if [[ ${EUID:-$(id -u)} -ne 0 ]]; then
+	echo "Please run as root (use sudo)." >&2
+	exit 1
 fi
 
-echo "[1/8] Updating system packages"
-sudo apt-get update -y
-sudo apt-get upgrade -y
+PUBLIC_ORIGIN=${1:-}
+if [[ -z "$PUBLIC_ORIGIN" ]]; then
+	echo "PUBLIC_ORIGIN is required, e.g. http://<IP> or https://<domain>" >&2
+	exit 1
+fi
 
-echo "[2/8] Installing prerequisites"
-sudo apt-get install -y curl software-properties-common build-essential ffmpeg redis-server
+echo "==> Installing Docker Engine and Compose plugin"
+apt-get update -y
+apt-get install -y ca-certificates curl gnupg lsb-release
+install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+chmod a+r /etc/apt/keyrings/docker.gpg
+echo \
+	"deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \\n+  $(. /etc/os-release && echo $VERSION_CODENAME) stable" | \
+	tee /etc/apt/sources.list.d/docker.list > /dev/null
+apt-get update -y
+apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+systemctl enable --now docker
 
-echo "[3/8] Installing Node.js 20 (NodeSource)"
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt-get install -y nodejs
+echo "==> Generating JWT secret"
+JWT_SECRET=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 48)
 
-node -v
-npm -v
-
-echo "[4/8] Enabling Redis service"
-sudo systemctl enable redis-server
-sudo systemctl start redis-server
-sudo systemctl status redis-server --no-pager || true
-
-echo "[5/8] Installing PM2"
-sudo npm install -g pm2
-pm2 -v
-
-# Optional: open firewall ports (uncomment if UFW is enabled)
-# sudo ufw allow 3001/tcp   # backend API
-# sudo ufw allow 5173/tcp   # vite dev (if used)
-
-echo "[6/8] Building backend"
-cd backend
-npm ci
-npm run build
-
-# Create logs dir if not exists
-mkdir -p logs
-
-# Create a default .env file if not present
-if [ ! -f .env ]; then
-  cat > .env <<EOF
-NODE_ENV=production
-PORT=3001
-# Comma-separated list of allowed origins for CORS
-CORS_ORIGIN=http://localhost:5173
-# Local Redis (installed above)
-REDIS_URL=redis://127.0.0.1:6379
+echo "==> Writing .env.prod file"
+cat > .env.prod <<EOF
+PUBLIC_ORIGIN=${PUBLIC_ORIGIN}
+JWT_SECRET=${JWT_SECRET}
 EOF
-  echo "[i] Wrote backend/.env"
-fi
 
-echo "[7/8] Starting with PM2"
-pm2 start ecosystem.config.js
-pm2 save
+echo "==> Building containers (this may take a few minutes)"
+docker compose -f docker-compose.prod.yml --env-file .env.prod build
 
-echo "[8/8] Done. Backend listening on port 3001."
-echo "Use: pm2 status | pm2 logs watchtogtr-backend --lines 200"
+echo "==> Starting services"
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
+
+echo "==> Done. Visit: ${PUBLIC_ORIGIN}"
+echo "If you used an IP (http), ensure port 80 is open in your firewall / cloud security group."

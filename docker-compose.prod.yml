@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - REDIS_URL=redis://redis:6379
+      # Set this to your VPS public origin (http://IP or https://domain)
+      - CORS_ORIGIN=${PUBLIC_ORIGIN}
+      - JWT_SECRET=${JWT_SECRET}
+      - STUN_SERVERS=stun:stun.l.google.com:19302
+    depends_on:
+      redis:
+        condition: service_healthy
+    # Do not publish backend port publicly; reachable via nginx proxy
+    expose:
+      - "3001"
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+      args:
+        # Point frontend to the same public origin; nginx will proxy /api and /socket.io
+        VITE_API_URL: ${PUBLIC_ORIGIN}
+        VITE_WS_URL: ${PUBLIC_ORIGIN}
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+volumes:
+  redis-data:

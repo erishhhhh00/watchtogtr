@@ -328,6 +328,68 @@ Sent every 5 seconds and on playback changes
 }
 ```
 
+## Proxy & Video Endpoints
+
+### Video Proxy
+**GET** `/proxy/video?url=<encoded-url>`
+
+Proxies video content from allowed hosts (Google Drive, Streamtape, Doodstream, Mixdrop, Mega, etc.)
+
+Query Parameters:
+- `url`: URL-encoded video source URL
+
+Response: Video stream (binary)
+
+### Video Transcode
+**GET** `/proxy/transcode?url=<encoded-url>`
+
+Transcodes videos (especially MKV files) to browser-compatible H.264/AAC format using FFmpeg
+
+Query Parameters:
+- `url`: URL-encoded video source URL
+
+Response: Transcoded video stream (binary, MP4 container)
+
+### FFmpeg Health Check
+**GET** `/proxy/health`
+
+Response:
+```json
+{
+  "ffmpeg": {
+    "available": true,
+    "path": "/path/to/ffmpeg"
+  },
+  "status": "ok"
+}
+```
+
+### Streamtape Video Info
+**GET** `/proxy/streamtape/info?url=<streamtape-url>`
+
+Fetches video information and direct playback URL from Streamtape
+
+Query Parameters:
+- `url`: Streamtape video URL (e.g., `https://streamtape.com/v/xxxxx` or `https://streamtape.com/e/xxxxx`)
+
+Response:
+```json
+{
+  "id": "video-id",
+  "title": "Video Title",
+  "videoUrl": "https://direct-video-url.mp4",
+  "embedUrl": "https://streamtape.com/e/xxxxx",
+  "proxyUrl": "https://your-backend.com/api/proxy/video?url=..."
+}
+```
+
+Error Response:
+```json
+{
+  "message": "Invalid Streamtape URL"
+}
+```
+
 ## Rate Limits
 
 - General API: 100 requests per 15 minutes

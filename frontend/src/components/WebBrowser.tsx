@@ -53,7 +53,6 @@ function WebBrowser({ onVideoUrlFound, onClose }: WebBrowserProps) {
         const sources = video.querySelectorAll('source');
         sources.forEach((source) => {
           const src = source.getAttribute('src');
-          const type = source.getAttribute('type') || 'video/mp4';
           if (src && src.startsWith('http')) {
             videos.push({
               url: src,
