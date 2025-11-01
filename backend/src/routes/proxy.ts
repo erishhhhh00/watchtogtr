@@ -483,29 +483,29 @@ function fallbackToScraping(
 ) {
   const embedUrl = `https://streamtape.com/e/${videoId}`;
   
+  console.log('[Streamtape Scraper] Fetching embed page:', embedUrl);
+  
   https.get(embedUrl, (embedRes) => {
     let html = '';
     embedRes.on('data', (chunk) => { html += chunk; });
     embedRes.on('end', () => {
+      console.log('[Streamtape Scraper] HTML length:', html.length);
+      
       // Extract title from HTML
       const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
       const title = titleMatch ? titleMatch[1].replace(' - Streamtape', '').trim() : `Video ${videoId}`;
       
-      // Extract direct video URL from the obfuscated JavaScript
-      // Pattern: document.getElementById('robotlink').innerHTML = 'PARTIAL_URL' + 'TOKEN';
-      const robotlinkMatch = html.match(/getElementById\s*\(\s*['"](robotlink|videolink)['"]\s*\)\s*\.innerHTML\s*=\s*['"]([^'"]+)['"]\s*\+\s*['"]([^'"]+)['"]/i);
-      
+      // Try multiple patterns to extract video URL
       let directVideoUrl = '';
       
+      // Pattern 1: document.getElementById('robotlink').innerHTML = 'PARTIAL_URL' + 'TOKEN';
+      let robotlinkMatch = html.match(/getElementById\s*\(\s*['"](robotlink|videolink)['"]\s*\)\s*\.innerHTML\s*=\s*['"]([^'"]+)['"]\s*\+\s*['"]([^'"]+)['"]/i);
+      
       if (robotlinkMatch) {
-        // Combine the two parts of the URL
         const partialUrl = robotlinkMatch[2];
         const token = robotlinkMatch[3];
+        const cleanToken = token.replace(/^[\/\s&]+/, '');
         
-        // Remove leading slash/whitespace from token if present
-        const cleanToken = token.replace(/^[\/\s]+/, '');
-        
-        // Construct full URL - add https: if missing
         if (partialUrl.startsWith('//')) {
           directVideoUrl = `https:${partialUrl}${cleanToken}`;
         } else if (partialUrl.startsWith('http')) {
@@ -513,12 +513,59 @@ function fallbackToScraping(
         } else {
           directVideoUrl = `https:${partialUrl}${cleanToken}`;
         }
-      } else {
-        // Last resort fallback
+        console.log('[Streamtape Scraper] Found robotlink URL:', directVideoUrl);
+      }
+      
+      // Pattern 2: Try to find direct video URLs in script tags
+      if (!directVideoUrl) {
+        const urlPatterns = [
+          /https?:\/\/[a-z0-9-]+\.(?:streamtape\.net|streamta\.pe|strtape\.tech|stape\.fun)\/[^\s'"<>]+/gi,
+          /"(https?:\/\/[^"]+\.mp4[^"]*)"/gi,
+        ];
+        
+        for (const pattern of urlPatterns) {
+          const matches = html.match(pattern);
+          if (matches && matches.length > 0) {
+            // Find the most likely video URL (longest one, usually has token)
+            const videoUrls = matches.filter(url => 
+              url.includes('streamtape.net') || 
+              url.includes('streamta.pe') || 
+              url.includes('strtape.tech') ||
+              url.includes('stape.fun') ||
+              url.includes('.mp4')
+            );
+            
+            if (videoUrls.length > 0) {
+              // Pick the longest URL (usually has the token)
+              directVideoUrl = videoUrls.reduce((a, b) => a.length > b.length ? a : b);
+              directVideoUrl = directVideoUrl.replace(/["']/g, ''); // Clean quotes
+              console.log('[Streamtape Scraper] Found video URL in script:', directVideoUrl);
+              break;
+            }
+          }
+        }
+      }
+      
+      // Pattern 3: Look for video source in any <video> or <source> tags
+      if (!directVideoUrl) {
+        const videoSrcMatch = html.match(/<(?:video|source)[^>]+src=['"]([^'"]+)['"]/i);
+        if (videoSrcMatch) {
+          directVideoUrl = videoSrcMatch[1];
+          console.log('[Streamtape Scraper] Found video in source tag:', directVideoUrl);
+        }
+      }
+      
+      // If still nothing found, return embed URL as last resort
+      if (!directVideoUrl) {
+        console.log('[Streamtape Scraper] No direct URL found, using embed URL');
         directVideoUrl = embedUrl;
       }
 
+      console.log('[Streamtape Scraper] Final URL:', directVideoUrl);
       resolve({ title, videoUrl: directVideoUrl });
     });
-  }).on('error', reject);
+  }).on('error', (err) => {
+    console.error('[Streamtape Scraper] Request error:', err);
+    reject(err);
+  });
 }
