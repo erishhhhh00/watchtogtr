@@ -435,11 +435,11 @@ proxyRouter.get('/streamtape/info', async (req, res): Promise<void> => {
       embedUrl: `https://streamtape.com/e/${videoId}`,
       proxyUrl: `${req.protocol}://${req.get('host')}/api/proxy/video?url=${encodeURIComponent(response.videoUrl)}`,
     });
-  } catch (error) {
-    console.error('[Streamtape API] Error:', error);
+  } catch (err) {
+    console.error('[Streamtape API] Error:', err);
     res.status(500).json({ 
       message: 'Failed to fetch Streamtape video info',
-      error: String(error),
+      error: String(err),
     });
   }
 });
