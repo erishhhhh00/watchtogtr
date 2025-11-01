@@ -338,8 +338,9 @@ function VideoPlayer() {
       const processUrl = async () => {
         let processedUrl = url;
         
-        // Check if it's a Streamtape embed URL
-        const isStreamtapeEmbed = /streamtape\.com\/(e|v)\//.test(url);
+        // Check if it's a Streamtape URL (embed or direct video)
+        const isStreamtapeEmbed = /streamtape\.com\/e\//.test(url);
+        const isStreamtapeVideo = /streamtape\.com\/v\//.test(url);
         
         if (url.includes('drive.google.com')) {
           driveTranscodeTriedRef.current = false;
@@ -357,6 +358,10 @@ function VideoPlayer() {
           setIsLoading(true);
           processedUrl = await getStreamtapeDirectUrl(url);
           console.log('[VideoPlayer] Got Streamtape URL:', processedUrl);
+        } else if (isStreamtapeVideo) {
+          // Streamtape /v/ URL - it's already a direct video URL, just proxy it
+          console.log('[VideoPlayer] Detected Streamtape video URL, using proxy...');
+          processedUrl = getProxiedUrl(url);
         } else if (url.includes('seedr.cc')) {
           processedUrl = getSeedrDirectUrl(url);
         } else {
@@ -439,7 +444,6 @@ function VideoPlayer() {
           video.removeEventListener('playing', handlePlaying);
           video.removeEventListener('stalled', handleStalled);
         };
-      }
     }
   }, [playbackState?.url]);
 
